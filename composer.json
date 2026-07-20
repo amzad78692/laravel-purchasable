@@ -10,6 +10,10 @@
         "payments"
     ],
     "homepage": "https://github.com/amzad78692/laravel-purchasable",
+    "support": {
+        "issues": "https://github.com/amzad78692/laravel-purchasable/issues",
+        "source": "https://github.com/amzad78692/laravel-purchasable/tree/main"
+    },
     "license": "MIT",
     "authors": [
         {
@@ -25,9 +29,9 @@
         "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
+        "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
         "nunomaduro/collision": "^8.8",
-        "larastan/larastan": "^3.0",
         "orchestra/testbench": "^8.0||^9.0||^10.0",
         "pestphp/pest": "^3.0",
         "pestphp/pest-plugin-arch": "^3.0",
@@ -71,6 +75,6 @@
             ]
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }
