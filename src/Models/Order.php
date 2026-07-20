@@ -1,0 +1,200 @@
+<?php
+
+namespace Amzad\LaravelPurchasable\Models;
+
+use Amzad\LaravelPurchasable\Enums\TransactionStatus;
+use Amzad\LaravelPurchasable\Enums\TransactionType;
+use Amzad\LaravelPurchasable\Exceptions\InvalidTransitionException;
+use Amzad\LaravelPurchasable\States\Order\CancelledState;
+use Amzad\LaravelPurchasable\States\Order\FailedState;
+use Amzad\LaravelPurchasable\States\Order\OrderState;
+use Amzad\LaravelPurchasable\States\Order\PaidState;
+use Amzad\LaravelPurchasable\States\Order\PartiallyRefundedState;
+use Amzad\LaravelPurchasable\States\Order\PendingState;
+use Amzad\LaravelPurchasable\States\Order\RefundedState;
+use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
+use Spatie\ModelStates\Exceptions\CouldNotPerformTransition;
+use Spatie\ModelStates\HasStates;
+
+/**
+ * @property int $id
+ * @property string $order_number
+ * @property string $buyer_type
+ * @property int $buyer_id
+ * @property string $purchasable_type
+ * @property int $purchasable_id
+ * @property int $quantity
+ * @property OrderState $status
+ * @property string $amount
+ * @property string $currency
+ * @property Carbon|null $paid_at
+ * @property array|null $meta
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ * @property Carbon|null $deleted_at
+ * @property-read Collection<int, Transaction> $transactions
+ */
+class Order extends Model
+{
+    use HasFactory;
+    use HasStates;
+    use SoftDeletes;
+
+    protected $guarded = ['id'];
+
+    public function __construct(array $attributes = [])
+    {
+        $this->table = config('purchasable.tables.orders', 'orders');
+
+        parent::__construct($attributes);
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'quantity' => 'integer',
+            'status' => OrderState::class,
+            'amount' => 'decimal:3',
+            'paid_at' => 'datetime',
+            'meta' => 'array',
+        ];
+    }
+
+    public function buyer(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    public function purchasable(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    /**
+     * @return HasMany<Transaction, $this>
+     */
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
+    }
+
+    public function scopePaid(Builder $query): Builder
+    {
+        return $query->whereState('status', PaidState::class);
+    }
+
+    public function scopePending(Builder $query): Builder
+    {
+        return $query->whereState('status', PendingState::class);
+    }
+
+    public function scopePaidBetween(Builder $query, DateTimeInterface $from, DateTimeInterface $to): Builder
+    {
+        return $query->whereState('status', PaidState::class)->whereBetween('paid_at', [$from, $to]);
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->status->equals(PaidState::class);
+    }
+
+    /**
+     * @throws InvalidTransitionException
+     */
+    public function transitionStatusTo(string $stateClass): static
+    {
+        try {
+            $this->status->transitionTo($stateClass);
+
+            return $this;
+        } catch (CouldNotPerformTransition $exception) {
+            throw InvalidTransitionException::from(
+                $this->status::getMorphClass(),
+                $stateClass::getMorphClass(),
+                $exception,
+            );
+        }
+    }
+
+    public function markAsPaid(): static
+    {
+        return $this->transitionStatusTo(PaidState::class);
+    }
+
+    public function markAsFailed(): static
+    {
+        return $this->transitionStatusTo(FailedState::class);
+    }
+
+    public function cancel(): static
+    {
+        return $this->transitionStatusTo(CancelledState::class);
+    }
+
+    public function markAsRefunded(): static
+    {
+        return $this->transitionStatusTo(RefundedState::class);
+    }
+
+    public function markAsPartiallyRefunded(): static
+    {
+        return $this->transitionStatusTo(PartiallyRefundedState::class);
+    }
+
+    /**
+     * Failed -> Pending, so a host can retry payment on the same order
+     * instead of creating a new one (see allow_multiple_pending_orders).
+     */
+    public function retry(): static
+    {
+        return $this->transitionStatusTo(PendingState::class);
+    }
+
+    public function refundedAmount(): string
+    {
+        $sum = $this->transactions()
+            ->where('type', TransactionType::Refund)
+            ->where('status', TransactionStatus::Success)
+            ->sum('amount');
+
+        return number_format((float) $sum, 3, '.', '');
+    }
+
+    public function isFullyRefunded(): bool
+    {
+        return bccomp($this->refundedAmount(), (string) $this->amount, 3) === 0;
+    }
+
+    public function isPartiallyRefunded(): bool
+    {
+        return bccomp($this->refundedAmount(), '0', 3) > 0 && ! $this->isFullyRefunded();
+    }
+
+    public static function revenueBetween(DateTimeInterface $from, DateTimeInterface $to): string
+    {
+        $sum = static::query()->paidBetween($from, $to)->sum('amount');
+
+        return number_format((float) $sum, 3, '.', '');
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public static function countsByStatus(): array
+    {
+        return static::query()
+            ->toBase()
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->all();
+    }
+}

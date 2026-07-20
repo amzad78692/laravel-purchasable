@@ -1,10 +1,13 @@
 <?php
 
-namespace VendorName\Skeleton\Tests;
+namespace Amzad\LaravelPurchasable\Tests;
 
+use Amzad\LaravelPurchasable\LaravelPurchasableServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
-use VendorName\Skeleton\SkeletonServiceProvider;
 
 class TestCase extends Orchestra
 {
@@ -13,14 +16,14 @@ class TestCase extends Orchestra
         parent::setUp();
 
         Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'VendorName\\Skeleton\\Database\\Factories\\'.class_basename($modelName).'Factory'
+            fn (string $modelName) => 'Amzad\\LaravelPurchasable\\Database\\Factories\\'.class_basename($modelName).'Factory'
         );
     }
 
     protected function getPackageProviders($app)
     {
         return [
-            SkeletonServiceProvider::class,
+            LaravelPurchasableServiceProvider::class,
         ];
     }
 
@@ -28,10 +31,26 @@ class TestCase extends Orchestra
     {
         config()->set('database.default', 'testing');
 
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/../database/migrations') as $migration) {
+        foreach (File::allFiles(__DIR__.'/../database/migrations') as $migration) {
             (include $migration->getRealPath())->up();
-         }
-         */
+        }
+
+        $this->setUpFixtureTables();
+    }
+
+    protected function setUpFixtureTables(): void
+    {
+        Schema::create('test_buyers', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('test_purchasables', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->decimal('price', 10, 3)->default(0);
+            $table->timestamps();
+        });
     }
 }

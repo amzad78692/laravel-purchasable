@@ -1,0 +1,34 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create(config('purchasable.tables.transactions', 'transactions'), function (Blueprint $table) {
+            $table->id();
+            $table->string('transaction_number')->unique();
+            $table->foreignId('order_id')->constrained(config('purchasable.tables.orders', 'orders'))->cascadeOnDelete();
+            $table->string('type');
+            $table->string('gateway');
+            $table->string('gateway_transaction_id')->nullable();
+            $table->string('status');
+            $table->decimal('amount', 10, 3);
+            $table->char('currency', 3);
+            $table->json('response_payload')->nullable();
+            $table->timestamp('paid_at')->nullable();
+            $table->timestamps();
+
+            $table->index('status');
+            $table->unique(['gateway', 'gateway_transaction_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists(config('purchasable.tables.transactions', 'transactions'));
+    }
+};

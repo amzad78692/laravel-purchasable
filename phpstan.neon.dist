@@ -7,4 +7,12 @@ parameters:
         - src
         - config
         - database
+        - tests/Fixtures
     tmpDir: build/phpstan
+    # This package's own config/ ships env() calls (e.g. config/purchasable.php's
+    # myfatoorah block) — legitimate here since spatie/laravel-package-tools
+    # merges it via mergeConfigFrom() during boot, which config:cache captures
+    # like any other config file. Tell Larastan's noEnvCallsOutsideOfConfig
+    # rule so it doesn't flag them as if this were arbitrary application code.
+    configDirectories:
+        - config

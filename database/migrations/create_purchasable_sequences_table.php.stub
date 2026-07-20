@@ -1,0 +1,23 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // Backs concurrency-safe order/transaction number sequencing (see OrderNumberGenerator).
+        Schema::create('purchasable_sequences', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->unsignedBigInteger('value')->default(0);
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('purchasable_sequences');
+    }
+};
