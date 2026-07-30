@@ -100,6 +100,7 @@ class RecordTransaction
         if ($orderEvent !== null) {
             event($orderEvent);
         }
+        $order->refresh();
 
         return $transaction;
     }
