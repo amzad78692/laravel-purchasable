@@ -196,6 +196,63 @@ Order::countsByStatus();                                   // ['pending' => 3, '
 $user->purchaseHistory()->get();                            // paid orders, newest first
 ```
 
+### Filament admin panel (optional)
+
+The package ships optional, read-only [Filament v4](https://filamentphp.com) resources for browsing Orders and Transactions. Filament isn't a dependency of this package — install it yourself, then register the plugin from your Panel provider:
+
+```bash
+composer require filament/filament:"^4.0"
+```
+
+```php
+// app/Providers/Filament/AdminPanelProvider.php
+use Amzad\LaravelPurchasable\Filament\PurchasablePlugin;
+
+public function panel(Panel $panel): Panel
+{
+    return $panel
+        // ...
+        ->plugins([
+            PurchasablePlugin::make(),
+        ]);
+}
+```
+
+Both resources (Orders, Transactions) are registered by default, list + view only — no create, edit, or delete, since orders and transactions are meant to be mutated through the package's actions (`CreateOrder`, `RecordTransaction`, `RefundOrder`, etc.), not hand-edited in the admin panel. Configure the plugin fluently:
+
+```php
+PurchasablePlugin::make()
+    ->orders(false)                  // don't register the Order resource
+    ->transactions()                 // register the Transaction resource (default)
+    ->navigationGroup('Sales'),      // defaults to "Purchasable"; pass null to remove grouping
+```
+
+Each table ships filters for the columns admins actually narrow down by:
+
+- **Orders** — Buyer (type + ID), Purchasable (type + ID), and a created-at date range, plus status and trashed.
+- **Transactions** — Order (searchable by order number), Gateway, Currency, and a created-at date range, plus type and status.
+
+#### Export
+
+Both tables ship a header **Export** action (all/filtered rows) and a bulk **Export** action (selected rows), producing CSV/XLSX via Filament's built-in export system (`filament/actions`, no extra dependency). This queues a job and tracks progress in the `exports` table, so it needs:
+
+- The `exports` table migrated — it ships with `filament/actions` and is picked up automatically the next time you run `php artisan migrate`.
+- A working queue connection. `QUEUE_CONNECTION=sync` works for small exports in development; use a real queue driver in production.
+
+#### Print invoice
+
+The Order resource ships a **Print invoice** action (on the table rows and the view page) that downloads a PDF invoice — the order's details plus its full transaction history. This needs [barryvdh/laravel-dompdf](https://github.com/barryvdh/laravel-dompdf), a separate optional dependency (not installed by Filament itself):
+
+```bash
+composer require barryvdh/laravel-dompdf
+```
+
+The action stays hidden until that package is installed, so it's safe to enable the plugin without it if you don't need invoices. The invoice view is published under the `purchasable` view namespace (`purchasable::orders.invoice`) — publish and edit it if you want to change the branding or layout:
+
+```bash
+php artisan vendor:publish --tag="purchasable-views"
+```
+
 ## Testing
 
 ```bash

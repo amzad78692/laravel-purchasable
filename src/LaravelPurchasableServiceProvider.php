@@ -13,6 +13,7 @@ class LaravelPurchasableServiceProvider extends PackageServiceProvider
         $package
             ->name('purchasable')
             ->hasConfigFile()
+            ->hasViews()
             ->hasMigrations([
                 'create_orders_table',
                 'create_transactions_table',
