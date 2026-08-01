@@ -188,23 +188,8 @@ class OrderResource extends Resource
                 $record->loadMissing('transactions');
 
                 $html = view('purchasable::orders.invoice', ['order' => $record])->render();
-
-                // Real-world order/transaction data (gateway payloads, host-supplied
-                // meta, etc.) occasionally contains invalid UTF-8 byte sequences.
-                // Dompdf's loadHtml() rejects those outright ("Malformed UTF-8
-                // characters"), so normalize the string first — this is a no-op for
-                // already-valid UTF-8.
-                $html = mb_convert_encoding($html, 'UTF-8', 'UTF-8');
-
                 $pdf = Pdf::loadHTML($html)->output();
 
-                // Pdf::download() returns a plain Response, which Livewire's file
-                // download detection doesn't recognize (it only checks for
-                // StreamedResponse/BinaryFileResponse) — the raw PDF binary then
-                // falls through into Livewire's normal JSON response encoding and
-                // fails there instead ("Malformed UTF-8 characters..."), since PDF
-                // bytes aren't valid UTF-8 text. streamDownload() produces a
-                // StreamedResponse, which Livewire does detect.
                 return response()->streamDownload(
                     fn () => print $pdf,
                     "invoice-{$record->order_number}.pdf",
