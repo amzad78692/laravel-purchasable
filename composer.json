@@ -29,7 +29,7 @@
         "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
-        "barryvdh/laravel-dompdf": "^3.1",
+        "carlos-meneses/laravel-mpdf": "^2.1",
         "filament/filament": "^4.0",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
@@ -45,7 +45,7 @@
     },
     "suggest": {
         "filament/filament": "Required to use the optional Filament v4 admin panel resources for Orders and Transactions (Amzad\\LaravelPurchasable\\Filament\\PurchasablePlugin).",
-        "barryvdh/laravel-dompdf": "Required to use the \"Print invoice\" action on the Filament Order resource."
+        "carlos-meneses/laravel-mpdf": "Required to use the \"Print invoice\" action on the Filament Order resource."
     },
     "autoload": {
         "psr-4": {

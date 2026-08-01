@@ -17,7 +17,7 @@ class ExpireOrdersCommand extends Command
         $ttlMinutes = config('purchasable.pending_order_ttl');
 
         if ($ttlMinutes === null) {
-            $this->comment('purchasable.pending_order_ttl is not set — nothing to expire.');
+            $this->comment(__('purchasable.pending_order_ttl is not set — nothing to expire.'));
 
             return self::SUCCESS;
         }
@@ -31,7 +31,7 @@ class ExpireOrdersCommand extends Command
             $cancelOrder->execute($order);
         }
 
-        $this->info("Expired {$staleOrders->count()} pending order(s).");
+        $this->info(__('Expired :count pending order(s).', ['count' => $staleOrders->count()]));
 
         return self::SUCCESS;
     }

@@ -10,8 +10,6 @@ use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\Pages\ViewOrder;
 use Amzad\LaravelPurchasable\Models\Order;
 use Amzad\LaravelPurchasable\States\Order\OrderState;
 use BackedEnum;
-use Barryvdh\DomPDF\Facade\Pdf;
-use Dompdf\Dompdf;
 use Filament\Actions\Action;
 use Filament\Actions\ExportBulkAction;
 use Filament\Actions\ViewAction;
@@ -31,7 +29,7 @@ use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Illuminate\Support\Str;
+use Mccarlosen\LaravelMpdf\Facades\LaravelMpdf;
 
 class OrderResource extends Resource
 {
@@ -48,6 +46,16 @@ class OrderResource extends Resource
         return PurchasablePlugin::get()->getNavigationGroup();
     }
 
+    public static function getModelLabel(): string
+    {
+        return __('Order');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('Orders');
+    }
+
     public static function getRecordRouteBindingEloquentQuery(): Builder
     {
         return parent::getRecordRouteBindingEloquentQuery()
@@ -58,53 +66,58 @@ class OrderResource extends Resource
     {
         return $schema
             ->components([
-                Section::make('Order')
+                Section::make(__('Order'))
                     ->columns(3)
                     ->schema([
                         TextEntry::make('order_number')
-                            ->label('Order #')
+                            ->label(__('Order #'))
                             ->copyable(),
                         TextEntry::make('status')
+                            ->label(__('Status'))
                             ->badge()
-                            ->formatStateUsing(fn (OrderState $state): string => Str::headline($state->getValue()))
+                            ->formatStateUsing(fn (OrderState $state): string => $state->label())
                             ->color(fn (OrderState $state): string => static::statusColor($state->getValue())),
-                        TextEntry::make('quantity'),
+                        TextEntry::make('quantity')
+                            ->label(__('Quantity')),
                         TextEntry::make('amount')
+                            ->label(__('Amount'))
                             ->money(fn (Order $record): string => $record->currency),
                         TextEntry::make('paid_at')
+                            ->label(__('Paid at'))
                             ->dateTime()
                             ->placeholder('—'),
                         TextEntry::make('created_at')
+                            ->label(__('Created at'))
                             ->dateTime(),
                     ]),
-                Section::make('Buyer & purchasable')
+                Section::make(__('Buyer & purchasable'))
                     ->columns(2)
                     ->schema([
                         Grid::make(2)
                             ->schema([
                                 TextEntry::make('buyer_type')
-                                    ->label('Buyer type')
+                                    ->label(__('Buyer type'))
                                     ->formatStateUsing(fn (string $state): string => class_basename($state)),
                                 TextEntry::make('buyer_id')
-                                    ->label('Buyer ID'),
+                                    ->label(__('Buyer ID')),
                             ]),
                         Grid::make(2)
                             ->schema([
                                 TextEntry::make('purchasable_type')
-                                    ->label('Purchasable type')
+                                    ->label(__('Purchasable type'))
                                     ->formatStateUsing(fn (string $state): string => class_basename($state)),
                                 TextEntry::make('purchasable_id')
-                                    ->label('Purchasable ID'),
+                                    ->label(__('Purchasable ID')),
                             ]),
                     ]),
-                Section::make('Meta')
+                Section::make(__('Meta'))
                     ->collapsed(fn (Order $record): bool => blank($record->meta))
                     ->schema([
                         TextEntry::make('meta')
                             ->hiddenLabel()
                             ->getStateUsing(fn (Order $record): string => filled($record->meta)
                                 ? json_encode($record->meta, JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE)
-                                : 'No metadata')
+                                : __('No metadata'))
                             ->extraAttributes(['style' => 'white-space: pre-wrap; font-family: monospace; font-size: 12px;']),
                     ]),
             ]);
@@ -115,38 +128,42 @@ class OrderResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('order_number')
-                    ->label('Order #')
+                    ->label(__('Order #'))
                     ->searchable()
                     ->sortable()
                     ->copyable(),
                 TextColumn::make('status')
+                    ->label(__('Status'))
                     ->badge()
-                    ->formatStateUsing(fn (OrderState $state): string => Str::headline($state->getValue()))
+                    ->formatStateUsing(fn (OrderState $state): string => $state->label())
                     ->color(fn (OrderState $state): string => static::statusColor($state->getValue()))
                     ->sortable(),
                 TextColumn::make('buyer_type')
-                    ->label('Buyer type')
+                    ->label(__('Buyer type'))
                     ->formatStateUsing(fn (string $state): string => class_basename($state))
                     ->toggleable(),
                 TextColumn::make('buyer_id')
-                    ->label('Buyer ID')
+                    ->label(__('Buyer ID'))
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('purchasable_type')
-                    ->label('Purchasable type')
+                    ->label(__('Purchasable type'))
                     ->formatStateUsing(fn (string $state): string => class_basename($state))
                     ->toggleable(),
                 TextColumn::make('purchasable_id')
-                    ->label('Purchasable ID')
+                    ->label(__('Purchasable ID'))
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('amount')
+                    ->label(__('Amount'))
                     ->money(fn (Order $record): string => $record->currency)
                     ->sortable(),
                 TextColumn::make('paid_at')
+                    ->label(__('Paid at'))
                     ->dateTime()
                     ->placeholder('—')
                     ->sortable()
                     ->toggleable(),
                 TextColumn::make('created_at')
+                    ->label(__('Created at'))
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -154,12 +171,12 @@ class OrderResource extends Resource
             ->filters([
                 SelectFilter::make('status')
                     ->options([
-                        'pending' => 'Pending',
-                        'paid' => 'Paid',
-                        'failed' => 'Failed',
-                        'cancelled' => 'Cancelled',
-                        'refunded' => 'Refunded',
-                        'partially_refunded' => 'Partially refunded',
+                        'pending' => __('Pending'),
+                        'paid' => __('Paid'),
+                        'failed' => __('Failed'),
+                        'cancelled' => __('Cancelled'),
+                        'refunded' => __('Refunded'),
+                        'partially_refunded' => __('Partially refunded'),
                     ]),
                 static::morphFilter('buyer', 'buyer_type', 'buyer_id'),
                 static::morphFilter('purchasable', 'purchasable_type', 'purchasable_id'),
@@ -180,15 +197,15 @@ class OrderResource extends Resource
     public static function invoiceAction(): Action
     {
         return Action::make('invoice')
-            ->label('Print invoice')
+            ->label(__('Print invoice'))
             ->icon(Heroicon::OutlinedDocumentArrowDown)
             ->color('gray')
-            ->visible(fn (): bool => class_exists(Dompdf::class))
+            ->visible(fn (): bool => class_exists(LaravelMpdf::class))
             ->action(function (Order $record) {
                 $record->loadMissing('transactions');
 
-                $html = view('purchasable::orders.invoice', ['order' => $record])->render();
-                $pdf = Pdf::loadHTML($html)->output();
+                $pdf = LaravelMpdf::loadView('purchasable::orders.invoice', ['order' => $record])
+                    ->output();
 
                 return response()->streamDownload(
                     fn () => print $pdf,
@@ -210,23 +227,35 @@ class OrderResource extends Resource
     protected static function morphFilter(string $name, string $typeColumn, string $idColumn): Filter
     {
         return Filter::make($name)
-            ->label(Str::headline($name))
+            ->label(static::morphFieldLabel($name))
             ->schema([
                 Select::make($typeColumn)
-                    ->label(Str::headline($typeColumn))
+                    ->label(static::morphFieldLabel($typeColumn))
                     ->options(fn (): array => static::morphTypeOptions($typeColumn))
                     ->native(false),
                 TextInput::make($idColumn)
-                    ->label(Str::headline($idColumn))
+                    ->label(static::morphFieldLabel($idColumn))
                     ->numeric(),
             ])
             ->query(fn (Builder $query, array $data): Builder => $query
                 ->when($data[$typeColumn] ?? null, fn (Builder $query, string $type) => $query->where($typeColumn, $type))
                 ->when($data[$idColumn] ?? null, fn (Builder $query, string $id) => $query->where($idColumn, $id)))
             ->indicateUsing(fn (array $data) => array_filter([
-                $typeColumn => filled($data[$typeColumn] ?? null) ? Str::headline($typeColumn).': '.class_basename($data[$typeColumn]) : null,
-                $idColumn => filled($data[$idColumn] ?? null) ? Str::headline($idColumn).': '.$data[$idColumn] : null,
+                $typeColumn => filled($data[$typeColumn] ?? null) ? static::morphFieldLabel($typeColumn).': '.class_basename($data[$typeColumn]) : null,
+                $idColumn => filled($data[$idColumn] ?? null) ? static::morphFieldLabel($idColumn).': '.$data[$idColumn] : null,
             ]));
+    }
+
+    protected static function morphFieldLabel(string $column): string
+    {
+        return match ($column) {
+            'buyer' => __('Buyer'),
+            'buyer_type' => __('Buyer type'),
+            'buyer_id' => __('Buyer ID'),
+            'purchasable' => __('Purchasable'),
+            'purchasable_type' => __('Purchasable type'),
+            'purchasable_id' => __('Purchasable ID'),
+        };
     }
 
     /**

@@ -234,17 +234,24 @@ Each table ships filters for the columns admins actually narrow down by:
 
 #### Export
 
-Both tables ship a header **Export** action (all/filtered rows) and a bulk **Export** action (selected rows), producing CSV/XLSX via Filament's built-in export system (`filament/actions`, no extra dependency). This queues a job and tracks progress in the `exports` table, so it needs:
+Both tables ship a header **Export** action (all/filtered rows) and a bulk **Export** action (selected rows), producing CSV/XLSX via Filament's built-in export system (`filament/actions`, no extra dependency). Exports run as a queued job batch and notify the initiating user (via a database notification) when done, so three tables need to exist:
 
-- The `exports` table migrated — it ships with `filament/actions` and is picked up automatically the next time you run `php artisan migrate`.
-- A working queue connection. `QUEUE_CONNECTION=sync` works for small exports in development; use a real queue driver in production.
+```bash
+php artisan queue:batches-table    # job_batches — exports are dispatched via Bus::batch()
+php artisan notifications:table    # notifications — the "export ready" notification
+php artisan migrate                # also picks up filament/actions' own `exports` table automatically
+```
+
+If your app doesn't already use queued job batching or database notifications, these two stubs won't exist yet — a fresh install commonly hits `Base table or view not found: job_batches` right after fixing the `exports` table error, so it's worth running all three up front rather than one at a time. You'll also need a working queue connection: `QUEUE_CONNECTION=sync` works for small exports in development; use a real queue driver in production.
+
+> **Note:** Filament's export system bypasses per-record authorization and exports every record matching the table's query — if `OrderResource`/`TransactionResource` need to be scoped per-user or per-tenant, do it in `getEloquentQuery()`, not by relying on policies. Gateway-supplied columns (`gateway`, `gateway_transaction_id`) are also defended against CSV/XLSX formula injection in `TransactionExporter`, since those values originate from webhook payloads outside the package's control.
 
 #### Print invoice
 
-The Order resource ships a **Print invoice** action (on the table rows and the view page) that downloads a PDF invoice — the order's details plus its full transaction history. This needs [barryvdh/laravel-dompdf](https://github.com/barryvdh/laravel-dompdf), a separate optional dependency (not installed by Filament itself):
+The Order resource ships a **Print invoice** action (on the table rows and the view page) that downloads a PDF invoice — the order's details plus its full transaction history. This needs [carlos-meneses/laravel-mpdf](https://github.com/carlosMeneses/laravel-mpdf), a separate optional dependency (not installed by Filament itself):
 
 ```bash
-composer require barryvdh/laravel-dompdf
+composer require carlos-meneses/laravel-mpdf
 ```
 
 The action stays hidden until that package is installed, so it's safe to enable the plugin without it if you don't need invoices. The invoice view is published under the `purchasable` view namespace (`purchasable::orders.invoice`) — publish and edit it if you want to change the branding or layout:

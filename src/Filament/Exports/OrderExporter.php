@@ -8,7 +8,6 @@ use Filament\Actions\Exports\ExportColumn;
 use Filament\Actions\Exports\Exporter;
 use Filament\Actions\Exports\Models\Export;
 use Illuminate\Support\Number;
-use Illuminate\Support\Str;
 
 class OrderExporter extends Exporter
 {
@@ -21,33 +20,43 @@ class OrderExporter extends Exporter
     {
         return [
             ExportColumn::make('order_number')
-                ->label('Order #'),
+                ->label(__('Order #')),
             ExportColumn::make('status')
-                ->formatStateUsing(fn (OrderState $state): string => Str::headline($state->getValue())),
+                ->label(__('Status'))
+                ->formatStateUsing(fn (OrderState $state): string => $state->label()),
             ExportColumn::make('buyer_type')
-                ->label('Buyer type')
+                ->label(__('Buyer type'))
                 ->formatStateUsing(fn (string $state): string => class_basename($state)),
             ExportColumn::make('buyer_id')
-                ->label('Buyer ID'),
+                ->label(__('Buyer ID')),
             ExportColumn::make('purchasable_type')
-                ->label('Purchasable type')
+                ->label(__('Purchasable type'))
                 ->formatStateUsing(fn (string $state): string => class_basename($state)),
             ExportColumn::make('purchasable_id')
-                ->label('Purchasable ID'),
-            ExportColumn::make('quantity'),
-            ExportColumn::make('amount'),
-            ExportColumn::make('currency'),
-            ExportColumn::make('paid_at'),
-            ExportColumn::make('created_at'),
+                ->label(__('Purchasable ID')),
+            ExportColumn::make('quantity')
+                ->label(__('Quantity')),
+            ExportColumn::make('amount')
+                ->label(__('Amount')),
+            ExportColumn::make('currency')
+                ->label(__('Currency')),
+            ExportColumn::make('paid_at')
+                ->label(__('Paid at')),
+            ExportColumn::make('created_at')
+                ->label(__('Created at')),
         ];
     }
 
     public static function getCompletedNotificationBody(Export $export): string
     {
-        $body = 'Your order export has completed and '.Number::format($export->successful_rows).' '.str('row')->plural($export->successful_rows).' exported.';
+        $body = $export->successful_rows === 1
+            ? __('Your order export has completed and :count row exported.', ['count' => Number::format($export->successful_rows)])
+            : __('Your order export has completed and :count rows exported.', ['count' => Number::format($export->successful_rows)]);
 
         if ($failedRowsCount = $export->getFailedRowsCount()) {
-            $body .= ' '.Number::format($failedRowsCount).' '.str('row')->plural($failedRowsCount).' failed to export.';
+            $body .= ' '.($failedRowsCount === 1
+                ? __(':count row failed to export.', ['count' => Number::format($failedRowsCount)])
+                : __(':count rows failed to export.', ['count' => Number::format($failedRowsCount)]));
         }
 
         return $body;

@@ -23,7 +23,6 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
-use Illuminate\Support\Str;
 
 class TransactionResource extends Resource
 {
@@ -41,50 +40,66 @@ class TransactionResource extends Resource
         return PurchasablePlugin::get()->getNavigationGroup();
     }
 
+    public static function getModelLabel(): string
+    {
+        return __('Transaction');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('Transactions');
+    }
+
     public static function infolist(Schema $schema): Schema
     {
         return $schema
             ->components([
-                Section::make('Transaction')
+                Section::make(__('Transaction'))
                     ->columns(3)
                     ->schema([
                         TextEntry::make('transaction_number')
-                            ->label('Transaction #')
+                            ->label(__('Transaction #'))
                             ->copyable(),
                         TextEntry::make('order.order_number')
-                            ->label('Order #')
+                            ->label(__('Order #'))
                             ->url(fn (Transaction $record): string => OrderResource::getUrl('view', ['record' => $record->order])),
                         TextEntry::make('type')
+                            ->label(__('Type'))
                             ->badge()
-                            ->formatStateUsing(fn (TransactionType $state): string => Str::headline($state->value))
+                            ->formatStateUsing(fn (TransactionType $state): string => $state->label())
                             ->color(fn (TransactionType $state): string => $state === TransactionType::Refund ? 'warning' : 'primary'),
                         TextEntry::make('status')
+                            ->label(__('Status'))
                             ->badge()
-                            ->formatStateUsing(fn (TransactionStatus $state): string => Str::headline($state->value))
+                            ->formatStateUsing(fn (TransactionStatus $state): string => $state->label())
                             ->color(fn (TransactionStatus $state): string => static::statusColor($state)),
                         TextEntry::make('gateway')
+                            ->label(__('Gateway'))
                             ->formatStateUsing(fn (?string $state): ?string => static::sanitizeUtf8($state)),
                         TextEntry::make('gateway_transaction_id')
-                            ->label('Gateway transaction ID')
+                            ->label(__('Gateway transaction ID'))
                             ->formatStateUsing(fn (?string $state): ?string => static::sanitizeUtf8($state))
                             ->copyable()
                             ->placeholder('—'),
                         TextEntry::make('amount')
+                            ->label(__('Amount'))
                             ->money(fn (Transaction $record): string => $record->currency),
                         TextEntry::make('paid_at')
+                            ->label(__('Paid at'))
                             ->dateTime()
                             ->placeholder('—'),
                         TextEntry::make('created_at')
+                            ->label(__('Created at'))
                             ->dateTime(),
                     ]),
-                Section::make('Gateway response')
+                Section::make(__('Gateway response'))
                     ->collapsed(fn (Transaction $record): bool => blank($record->response_payload))
                     ->schema([
                         TextEntry::make('response_payload')
                             ->hiddenLabel()
                             ->getStateUsing(fn (Transaction $record): string => filled($record->response_payload)
                                 ? json_encode($record->response_payload, JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE)
-                                : 'No response payload')
+                                : __('No response payload'))
                             ->extraAttributes(['style' => 'white-space: pre-wrap; font-family: monospace; font-size: 12px;']),
                     ]),
             ]);
@@ -95,67 +110,77 @@ class TransactionResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('transaction_number')
-                    ->label('Transaction #')
+                    ->label(__('Transaction #'))
                     ->searchable()
                     ->sortable()
                     ->copyable(),
                 TextColumn::make('order.order_number')
-                    ->label('Order #')
+                    ->label(__('Order #'))
                     ->searchable()
                     ->sortable()
                     ->url(fn (Transaction $record): string => OrderResource::getUrl('view', ['record' => $record->order])),
                 TextColumn::make('type')
+                    ->label(__('Type'))
                     ->badge()
-                    ->formatStateUsing(fn (TransactionType $state): string => Str::headline($state->value))
+                    ->formatStateUsing(fn (TransactionType $state): string => $state->label())
                     ->color(fn (TransactionType $state): string => $state === TransactionType::Refund ? 'warning' : 'primary')
                     ->sortable(),
                 TextColumn::make('status')
+                    ->label(__('Status'))
                     ->badge()
-                    ->formatStateUsing(fn (TransactionStatus $state): string => Str::headline($state->value))
+                    ->formatStateUsing(fn (TransactionStatus $state): string => $state->label())
                     ->color(fn (TransactionStatus $state): string => static::statusColor($state))
                     ->sortable(),
                 TextColumn::make('gateway')
+                    ->label(__('Gateway'))
                     ->formatStateUsing(fn (?string $state): ?string => static::sanitizeUtf8($state))
                     ->toggleable(),
                 TextColumn::make('gateway_transaction_id')
-                    ->label('Gateway transaction ID')
+                    ->label(__('Gateway transaction ID'))
                     ->formatStateUsing(fn (?string $state): ?string => static::sanitizeUtf8($state))
                     ->searchable()
                     ->placeholder('—')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('amount')
+                    ->label(__('Amount'))
                     ->money(fn (Transaction $record): string => $record->currency)
                     ->sortable(),
                 TextColumn::make('paid_at')
+                    ->label(__('Paid at'))
                     ->dateTime()
                     ->placeholder('—')
                     ->sortable()
                     ->toggleable(),
                 TextColumn::make('created_at')
+                    ->label(__('Created at'))
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('type')
+                    ->label(__('Type'))
                     ->options([
-                        TransactionType::Charge->value => 'Charge',
-                        TransactionType::Refund->value => 'Refund',
+                        TransactionType::Charge->value => TransactionType::Charge->label(),
+                        TransactionType::Refund->value => TransactionType::Refund->label(),
                     ]),
                 SelectFilter::make('status')
+                    ->label(__('Status'))
                     ->options([
-                        TransactionStatus::Pending->value => 'Pending',
-                        TransactionStatus::Success->value => 'Success',
-                        TransactionStatus::Failed->value => 'Failed',
+                        TransactionStatus::Pending->value => TransactionStatus::Pending->label(),
+                        TransactionStatus::Success->value => TransactionStatus::Success->label(),
+                        TransactionStatus::Failed->value => TransactionStatus::Failed->label(),
                     ]),
                 SelectFilter::make('order')
                     ->relationship('order', 'order_number')
                     ->searchable()
                     ->preload()
-                    ->label('Order'),
+                    ->label(__('Order')),
                 SelectFilter::make('gateway')
+                    ->label(__('Gateway'))
                     ->options(fn (): array => static::distinctColumnOptions('gateway')),
                 SelectFilter::make('currency')
+                    ->label(__('Currency'))
                     ->options(fn (): array => static::distinctColumnOptions('currency')),
                 static::createdAtRangeFilter(),
             ])

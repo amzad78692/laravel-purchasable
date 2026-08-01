@@ -8,6 +8,9 @@ class CurrencyMismatchException extends PurchasableException
 {
     public static function for(Order $order, string $givenCurrency): self
     {
-        return new self("Transaction currency [{$givenCurrency}] does not match order currency [{$order->currency}].");
+        return new self(__('Transaction currency [:given] does not match order currency [:expected].', [
+            'given' => $givenCurrency,
+            'expected' => $order->currency,
+        ]));
     }
 }

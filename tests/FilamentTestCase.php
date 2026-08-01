@@ -3,7 +3,6 @@
 namespace Amzad\LaravelPurchasable\Tests;
 
 use Amzad\LaravelPurchasable\Tests\Fixtures\PurchasableTestPanelProvider;
-use Barryvdh\DomPDF\ServiceProvider as DomPdfServiceProvider;
 use Filament\Actions\ActionsServiceProvider;
 use Filament\FilamentServiceProvider;
 use Filament\Forms\FormsServiceProvider;
@@ -14,6 +13,7 @@ use Filament\Support\SupportServiceProvider;
 use Filament\Tables\TablesServiceProvider;
 use Filament\Widgets\WidgetsServiceProvider;
 use Livewire\LivewireServiceProvider;
+use Mccarlosen\LaravelMpdf\LaravelMpdfServiceProvider;
 
 class FilamentTestCase extends TestCase
 {
@@ -22,7 +22,7 @@ class FilamentTestCase extends TestCase
         return [
             ...parent::getPackageProviders($app),
             LivewireServiceProvider::class,
-            DomPdfServiceProvider::class,
+            LaravelMpdfServiceProvider::class,
             SupportServiceProvider::class,
             ActionsServiceProvider::class,
             NotificationsServiceProvider::class,

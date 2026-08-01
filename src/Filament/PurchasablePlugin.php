@@ -22,7 +22,9 @@ class PurchasablePlugin implements Plugin
 
     protected bool $hasTransactionResource = true;
 
-    protected ?string $navigationGroup = 'Purchasable';
+    protected ?string $navigationGroup = null;
+
+    protected bool $navigationGroupWasSet = false;
 
     public static function make(): static
     {
@@ -78,12 +80,17 @@ class PurchasablePlugin implements Plugin
     public function navigationGroup(?string $group): static
     {
         $this->navigationGroup = $group;
+        $this->navigationGroupWasSet = true;
 
         return $this;
     }
 
     public function getNavigationGroup(): ?string
     {
+        if (! $this->navigationGroupWasSet) {
+            return __('Purchasable');
+        }
+
         return $this->navigationGroup;
     }
 }

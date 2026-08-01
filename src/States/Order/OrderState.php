@@ -15,6 +15,18 @@ use Spatie\ModelStates\StateConfig;
 
 abstract class OrderState extends State
 {
+    public function label(): string
+    {
+        return match ($this->getValue()) {
+            'pending' => __('Pending'),
+            'paid' => __('Paid'),
+            'failed' => __('Failed'),
+            'cancelled' => __('Cancelled'),
+            'refunded' => __('Refunded'),
+            'partially_refunded' => __('Partially refunded'),
+        };
+    }
+
     public static function config(): StateConfig
     {
         return parent::config()

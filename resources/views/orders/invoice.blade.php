@@ -1,25 +1,20 @@
 @php
-    $statusLabel = \Illuminate\Support\Str::headline($order->status->getValue());
+    $statusLabel = $order->status->label();
     $statusBadgeClass = match ($order->status->getValue()) {
         'paid' => 'badge-success',
         'failed', 'cancelled' => 'badge-danger',
         'refunded', 'partially_refunded' => 'badge-warning',
         default => 'badge-gray',
     };
+    $isRtl = app()->getLocale() === 'ar';
 @endphp
 <!DOCTYPE html>
-<html>
+<html lang="{{ app()->getLocale() }}" dir="{{ $isRtl ? 'rtl' : 'ltr' }}">
 
 <head>
     <meta charset="utf-8">
-    <title>Invoice {{ $order->order_number }}</title>
+    <title>{{ __('Invoice :number', ['number' => $order->order_number]) }}</title>
     <style>
-        /*
-         * Dompdf-safe CSS only: table-based layout instead of flexbox/grid
-         * (neither is supported), border-radius/rgba/letter-spacing (all
-         * supported), no box-shadow or background gradients (unreliable
-         * across dompdf versions).
-         */
         @page {
             margin: 34px 38px;
         }
@@ -216,6 +211,29 @@
             color: #9ca3af;
             text-align: center;
         }
+
+        @if ($isRtl)
+            .meta-table {
+                margin-left: 0;
+                margin-right: auto;
+            }
+
+            .meta-table td {
+                padding: 2px 18px 2px 0;
+            }
+
+            .meta-value {
+                text-align: left;
+            }
+
+            table.data th {
+                text-align: right;
+            }
+
+            .text-right {
+                text-align: left;
+            }
+        @endif
     </style>
 </head>
 
@@ -226,27 +244,27 @@
         <tr>
             <td>
                 <div class="brand-name">{{ config('app.name') }}</div>
-                <div class="brand-tagline">Order Invoice</div>
+                <div class="brand-tagline">{{ __('Order Invoice') }}</div>
             </td>
             <td class="text-right">
                 <table class="meta-table">
                     <tr>
-                        <td class="meta-label">Order #</td>
+                        <td class="meta-label">{{ __('Order #') }}</td>
                         <td class="meta-value">{{ $order->order_number }}</td>
                     </tr>
                     <tr>
-                        <td class="meta-label">Status</td>
+                        <td class="meta-label">{{ __('Status') }}</td>
                         <td class="meta-value">
                             <span class="badge {{ $statusBadgeClass }}">{{ $statusLabel }}</span>
                         </td>
                     </tr>
                     <tr>
-                        <td class="meta-label">Order date</td>
+                        <td class="meta-label">{{ __('Order date') }}</td>
                         <td class="meta-value">{{ $order->created_at->toFormattedDateString() }}</td>
                     </tr>
                     @if ($order->paid_at)
                         <tr>
-                            <td class="meta-label">Paid date</td>
+                            <td class="meta-label">{{ __('Paid date') }}</td>
                             <td class="meta-value">{{ $order->paid_at->toFormattedDateString() }}</td>
                         </tr>
                     @endif
@@ -256,16 +274,16 @@
     </table>
 
     @if ($order->transactions->isNotEmpty())
-        <div class="section-title">Payment history</div>
+        <div class="section-title">{{ __('Payment history') }}</div>
         <table class="data">
             <tr>
-                <th>Transaction #</th>
-                <th>Type</th>
-                <th>Gateway</th>
-                <th>Reference</th>
-                <th>Status</th>
-                <th class="text-right">Amount</th>
-                <th>Date</th>
+                <th>{{ __('Transaction #') }}</th>
+                <th>{{ __('Type') }}</th>
+                <th>{{ __('Gateway') }}</th>
+                <th>{{ __('Reference') }}</th>
+                <th>{{ __('Status') }}</th>
+                <th class="text-right">{{ __('Amount') }}</th>
+                <th>{{ __('Date') }}</th>
             </tr>
             @foreach ($order->transactions as $transaction)
                 <tr>
@@ -273,7 +291,7 @@
                     <td>
                         <span
                             class="badge {{ $transaction->type === \Amzad\LaravelPurchasable\Enums\TransactionType::Refund ? 'badge-warning' : 'badge-primary' }}">
-                            {{ \Illuminate\Support\Str::headline($transaction->type->value) }}
+                            {{ $transaction->type->label() }}
                         </span>
                     </td>
                     <td>{{ $transaction->gateway }}</td>
@@ -285,7 +303,7 @@
                                 \Amzad\LaravelPurchasable\Enums\TransactionStatus::Failed => 'badge-danger',
                                 \Amzad\LaravelPurchasable\Enums\TransactionStatus::Pending => 'badge-gray',
                             } }}">
-                            {{ \Illuminate\Support\Str::headline($transaction->status->value) }}
+                            {{ $transaction->status->label() }}
                         </span>
                     </td>
                     <td class="text-right">{{ number_format((float) $transaction->amount, 2) }}
@@ -299,26 +317,26 @@
 
     <table class="totals">
         <tr>
-            <td class="text-right text-muted">Subtotal</td>
+            <td class="text-right text-muted">{{ __('Subtotal') }}</td>
             <td class="text-right" style="width: 160px;">{{ number_format((float) $order->amount, 2) }}
                 {{ $order->currency }}</td>
         </tr>
         @if (bccomp($order->refundedAmount(), '0', 3) > 0)
             <tr>
-                <td class="text-right text-muted">Refunded</td>
+                <td class="text-right text-muted">{{ __('Refunded') }}</td>
                 <td class="text-right">-{{ number_format((float) $order->refundedAmount(), 2) }}
                     {{ $order->currency }}</td>
             </tr>
         @endif
         <tr class="final">
-            <td class="text-right">Total paid</td>
+            <td class="text-right">{{ __('Total paid') }}</td>
             <td class="text-right">{{ number_format((float) $order->amount - (float) $order->refundedAmount(), 2) }}
                 {{ $order->currency }}</td>
         </tr>
     </table>
 
     @if (filled($order->meta))
-        <div class="section-title">Additional details</div>
+        <div class="section-title">{{ __('Additional details') }}</div>
         <div class="meta-box">
             @foreach ($order->meta as $key => $value)
                 <div class="row">
@@ -330,7 +348,7 @@
     @endif
 
     <div class="footer">
-        Generated on {{ now()->toDayDateTimeString() }} &middot; {{ config('app.name') }}
+        {{ __('Generated on :date', ['date' => now()->toDayDateTimeString()]) }} &middot; {{ config('app.name') }}
     </div>
 </body>
 

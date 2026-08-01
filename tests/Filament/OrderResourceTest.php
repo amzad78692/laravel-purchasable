@@ -7,13 +7,13 @@ use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\Pages\ListOrders;
 use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\Pages\ViewOrder;
 use Amzad\LaravelPurchasable\Models\Order;
 use Amzad\LaravelPurchasable\Models\Transaction;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\ExportAction;
 use Filament\Actions\ExportBulkAction;
 use Filament\Actions\Exports\Models\Export;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
+use Mccarlosen\LaravelMpdf\Facades\LaravelMpdf as Pdf;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 it('registers the order resource on the panel by default', function () {
@@ -104,7 +104,7 @@ it('exports orders with formatted status and morph type columns', function () {
     expect($exporter($order))->toBe([$order->order_number, 'Paid', 'User']);
 });
 
-it('shows the print invoice action since dompdf is installed', function () {
+it('shows the print invoice action since laravel-mpdf is installed', function () {
     expect(OrderResource::invoiceAction()->isVisible())->toBeTrue();
 });
 
@@ -126,10 +126,10 @@ it('renders a downloadable pdf invoice containing the order and its transactions
 it('returns a StreamedResponse from the invoice action so Livewire recognizes it as a file download', function () {
     // Livewire's file-download detection (SupportFileDownloads) only recognizes
     // StreamedResponse/BinaryFileResponse return values from an action. Anything
-    // else — including Pdf::download()'s plain Response — falls through into
-    // Livewire's normal JSON response encoding, which then fails trying to
-    // json_encode the raw (non-UTF8) PDF binary: "Malformed UTF-8 characters,
-    // possibly incorrectly encoded". See barryvdh/laravel-dompdf#1009.
+    // else — including a plain Response — falls through into Livewire's normal
+    // JSON response encoding, which then fails trying to json_encode the raw
+    // (non-UTF8) PDF binary: "Malformed UTF-8 characters, possibly incorrectly
+    // encoded".
     $order = Order::factory()->paid()->create();
 
     $response = OrderResource::invoiceAction()->getActionFunction()($order);
@@ -143,11 +143,11 @@ it('returns a StreamedResponse from the invoice action so Livewire recognizes it
     expect($content)->toStartWith('%PDF');
 });
 
-it('sanitizes invalid UTF-8 bytes before handing the invoice HTML to dompdf', function () {
+it('sanitizes invalid UTF-8 bytes before handing the invoice HTML to mpdf', function () {
     // Real-world gateway values occasionally contain invalid UTF-8 byte sequences
-    // (e.g. a corrupted webhook payload). Dompdf's loadHtml() rejects those
-    // outright with "Malformed UTF-8 characters", so the invoice action must
-    // normalize the rendered HTML before handing it to dompdf.
+    // (e.g. a corrupted webhook payload). mPDF's loadHTML() rejects those
+    // outright with malformed-UTF-8 errors, so the invoice action must
+    // normalize the rendered HTML before handing it to mpdf.
     $order = Order::factory()->paid()->create();
     Transaction::factory()->for($order)->create(['gateway' => "stripe\xC3\x28"]);
 

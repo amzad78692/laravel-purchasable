@@ -8,6 +8,6 @@ class OrderTrashedException extends PurchasableException
 {
     public static function for(Order $order): self
     {
-        return new self("Order [{$order->getKey()}] has been deleted and cannot be transitioned.");
+        return new self(__('Order [:id] has been deleted and cannot be transitioned.', ['id' => $order->getKey()]));
     }
 }
