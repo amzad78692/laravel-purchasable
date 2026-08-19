@@ -12,6 +12,7 @@ use Amzad\LaravelPurchasable\States\Order\PaidState;
 use Amzad\LaravelPurchasable\States\Order\PartiallyRefundedState;
 use Amzad\LaravelPurchasable\States\Order\PendingState;
 use Amzad\LaravelPurchasable\States\Order\RefundedState;
+use Amzad\LaravelPurchasable\Support\ResolvesDisplayName;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -29,9 +30,9 @@ use Spatie\ModelStates\HasStates;
  * @property string $order_number
  * @property string $buyer_type
  * @property int $buyer_id
- * @property string $purchasable_type
- * @property int $purchasable_id
- * @property int $quantity
+ * @property string|null $purchasable_type null for multi-item orders — see items()
+ * @property int|null $purchasable_id null for multi-item orders — see items()
+ * @property int|null $quantity null for multi-item orders — see items()
  * @property OrderState $status
  * @property string $amount
  * @property string $currency
@@ -41,11 +42,13 @@ use Spatie\ModelStates\HasStates;
  * @property Carbon $updated_at
  * @property Carbon|null $deleted_at
  * @property-read Collection<int, Transaction> $transactions
+ * @property-read Collection<int, OrderItem> $items
  */
 class Order extends Model
 {
     use HasFactory;
     use HasStates;
+    use ResolvesDisplayName;
     use SoftDeletes;
 
     protected $guarded = ['id'];
@@ -84,6 +87,43 @@ class Order extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    /**
+     * Line items for a multi-item order (see CreateMultiItemOrder /
+     * Buyer::purchaseMultiple()). Empty for single-item orders, which store
+     * their purchasable directly on the order via purchasable_type/id.
+     *
+     * @return HasMany<OrderItem, $this>
+     */
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function isMultiItem(): bool
+    {
+        return $this->purchasable_type === null;
+    }
+
+    /**
+     * Falls back to "ClassName #id" when the buyer model doesn't implement
+     * the optional getBuyerDisplayName() method.
+     */
+    public function buyerDisplayName(): string
+    {
+        return $this->resolveDisplayName($this->buyer_type, $this->buyer_id, fn () => $this->buyer, 'getBuyerDisplayName');
+    }
+
+    /**
+     * Only meaningful for single-item orders — purchasable_type/id are null
+     * on a multi-item order, see OrderItem::purchasableDisplayName() for
+     * those. Falls back to "ClassName #id" when the purchasable model
+     * doesn't implement the optional getPurchasableDisplayName() method.
+     */
+    public function purchasableDisplayName(): string
+    {
+        return $this->resolveDisplayName($this->purchasable_type, $this->purchasable_id, fn () => $this->purchasable, 'getPurchasableDisplayName');
     }
 
     public function scopePaid(Builder $query): Builder

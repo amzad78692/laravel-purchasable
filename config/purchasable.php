@@ -1,6 +1,7 @@
 <?php
 
 use Amzad\LaravelPurchasable\Models\Order;
+use Amzad\LaravelPurchasable\Models\OrderItem;
 use Amzad\LaravelPurchasable\Models\Transaction;
 
 return [
@@ -8,11 +9,13 @@ return [
     'tables' => [
         'orders' => 'orders',
         'transactions' => 'transactions',
+        'order_items' => 'order_items',
     ],
 
     'models' => [
         'order' => Order::class,
         'transaction' => Transaction::class,
+        'order_item' => OrderItem::class,
     ],
 
     'order_number' => [
@@ -57,5 +60,18 @@ return [
      * `purchasable:expire-orders` in the host app to act on it.
      */
     'pending_order_ttl' => null,
+
+    /*
+     * Multi-item ("cart-style") orders, created via CreateMultiItemOrder /
+     * Buyer::purchaseMultiple(). By default, allow_repurchase and
+     * allow_multiple_pending_orders are NOT enforced for multi-item orders,
+     * since generic ecommerce carts routinely contain repeat or concurrent
+     * purchases of the same item (unlike single-item tickets/subscriptions).
+     * Set this to true to re-apply those same per-item guards to each item
+     * in a multi-item order.
+     */
+    'multi_item' => [
+        'enforce_purchase_guards' => false,
+    ],
 
 ];

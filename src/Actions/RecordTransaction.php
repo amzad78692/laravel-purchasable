@@ -2,17 +2,22 @@
 
 namespace Amzad\LaravelPurchasable\Actions;
 
+use Amzad\LaravelPurchasable\Enums\OrderItemStatus;
 use Amzad\LaravelPurchasable\Enums\TransactionStatus;
 use Amzad\LaravelPurchasable\Enums\TransactionType;
+use Amzad\LaravelPurchasable\Events\OrderItemPartiallyRefunded;
+use Amzad\LaravelPurchasable\Events\OrderItemRefunded;
 use Amzad\LaravelPurchasable\Events\OrderPaid;
 use Amzad\LaravelPurchasable\Events\OrderPartiallyRefunded;
 use Amzad\LaravelPurchasable\Events\OrderRefunded;
 use Amzad\LaravelPurchasable\Events\TransactionFailed;
 use Amzad\LaravelPurchasable\Events\TransactionRecorded;
 use Amzad\LaravelPurchasable\Exceptions\CurrencyMismatchException;
+use Amzad\LaravelPurchasable\Exceptions\OrderItemMismatchException;
 use Amzad\LaravelPurchasable\Exceptions\OrderTrashedException;
 use Amzad\LaravelPurchasable\Exceptions\RefundExceedsPaidAmountException;
 use Amzad\LaravelPurchasable\Models\Order;
+use Amzad\LaravelPurchasable\Models\OrderItem;
 use Amzad\LaravelPurchasable\Models\Transaction;
 use Amzad\LaravelPurchasable\States\Order\PaidState;
 use Amzad\LaravelPurchasable\States\Order\PartiallyRefundedState;
@@ -25,6 +30,9 @@ class RecordTransaction
 {
     public function __construct(protected OrderNumberGenerator $numbers) {}
 
+    /**
+     * @param  OrderItem|null  $item  scopes this transaction to a single line item of a multi-item order (refunds only — see RefundOrder). Leave null for the normal, whole-order flow.
+     */
     public function execute(
         Order $order,
         TransactionType $type,
@@ -34,9 +42,14 @@ class RecordTransaction
         ?string $gatewayTransactionId = null,
         ?string $currency = null,
         array $responsePayload = [],
+        ?OrderItem $item = null,
     ): Transaction {
         if ($order->trashed()) {
             throw OrderTrashedException::for($order);
+        }
+
+        if ($item !== null && $item->order_id !== $order->getKey()) {
+            throw OrderItemMismatchException::for($order, $item);
         }
 
         $currency ??= $order->currency;
@@ -53,10 +66,14 @@ class RecordTransaction
             }
         }
 
-        [$transaction, $orderEvent] = DB::transaction(function () use (
-            $order, $type, $gateway, $amount, $status, $gatewayTransactionId, $currency, $responsePayload,
+        [$transaction, $orderEvent, $itemEvent] = DB::transaction(function () use (
+            $order, $item, $type, $gateway, $amount, $status, $gatewayTransactionId, $currency, $responsePayload,
         ) {
             $lockedOrder = Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+
+            $lockedItem = $item !== null
+                ? OrderItem::query()->whereKey($item->getKey())->lockForUpdate()->firstOrFail()
+                : null;
 
             if ($type === TransactionType::Refund && $status === TransactionStatus::Success) {
                 $alreadyRefunded = $lockedOrder->refundedAmount();
@@ -64,11 +81,20 @@ class RecordTransaction
                 if (bccomp(bcadd($alreadyRefunded, $amount, 3), (string) $lockedOrder->amount, 3) > 0) {
                     throw RefundExceedsPaidAmountException::for($lockedOrder, $alreadyRefunded, $amount);
                 }
+
+                if ($lockedItem !== null) {
+                    $alreadyRefundedItem = $lockedItem->refundedAmount();
+
+                    if (bccomp(bcadd($alreadyRefundedItem, $amount, 3), (string) $lockedItem->amount, 3) > 0) {
+                        throw RefundExceedsPaidAmountException::forItem($lockedItem, $alreadyRefundedItem, $amount);
+                    }
+                }
             }
 
             try {
                 $transaction = $lockedOrder->transactions()->create([
                     'transaction_number' => $this->numbers->generate('transaction_number'),
+                    'order_item_id' => $lockedItem?->getKey(),
                     'type' => $type,
                     'gateway' => $gateway,
                     'gateway_transaction_id' => $gatewayTransactionId,
@@ -80,7 +106,7 @@ class RecordTransaction
                 ]);
             } catch (QueryException $exception) {
                 if ($gatewayTransactionId !== null && $this->isDuplicateKeyError($exception)) {
-                    return [$this->findByGatewayId($gateway, $gatewayTransactionId), null];
+                    return [$this->findByGatewayId($gateway, $gatewayTransactionId), null, null];
                 }
 
                 throw $exception;
@@ -88,7 +114,13 @@ class RecordTransaction
 
             [, $orderEvent] = $this->applyOrderTransition($lockedOrder, $type, $status);
 
-            return [$transaction, $orderEvent];
+            $itemEvent = null;
+
+            if ($lockedItem !== null) {
+                [, $itemEvent] = $this->applyItemTransition($lockedItem, $type, $status);
+            }
+
+            return [$transaction, $orderEvent, $itemEvent];
         });
 
         event(new TransactionRecorded($transaction));
@@ -100,6 +132,11 @@ class RecordTransaction
         if ($orderEvent !== null) {
             event($orderEvent);
         }
+
+        if ($itemEvent !== null) {
+            event($itemEvent);
+        }
+
         $order->refresh();
 
         return $transaction;
@@ -136,6 +173,30 @@ class RecordTransaction
         }
 
         return [$order, null];
+    }
+
+    /**
+     * Mirrors applyOrderTransition() but scoped to a single line item.
+     * Deliberately independent of the order's own status: refunding one
+     * item out of a multi-item order can fire OrderItemRefunded for that
+     * item while the order as a whole only reaches PartiallyRefundedState,
+     * because other items are still unrefunded.
+     *
+     * @return array{0: OrderItem, 1: OrderItemPartiallyRefunded|OrderItemRefunded|null}
+     */
+    protected function applyItemTransition(OrderItem $item, TransactionType $type, TransactionStatus $status): array
+    {
+        if ($type === TransactionType::Refund && $status === TransactionStatus::Success) {
+            if ($item->isFullyRefunded()) {
+                $item->update(['status' => OrderItemStatus::Cancelled]);
+
+                return [$item, new OrderItemRefunded($item)];
+            }
+
+            return [$item, new OrderItemPartiallyRefunded($item)];
+        }
+
+        return [$item, null];
     }
 
     protected function findByGatewayId(string $gateway, string $gatewayTransactionId): ?Transaction

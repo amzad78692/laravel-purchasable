@@ -136,6 +136,7 @@
         table.data {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
 
         table.data th {
@@ -153,6 +154,7 @@
             padding: 10px;
             border-bottom: 1px solid #f3f4f6;
             font-size: 11px;
+            word-wrap: break-word;
         }
 
         .text-right {
@@ -273,9 +275,68 @@
         </tr>
     </table>
 
+    <div class="section-title">{{ __('Billed to') }}</div>
+    <div class="meta-box">
+        <div class="row"><strong>{{ $order->buyerDisplayName() }}</strong></div>
+    </div>
+
+    @if ($order->items->isNotEmpty())
+        <div class="section-title">{{ __('Items') }}</div>
+        <table class="data">
+            <colgroup>
+                <col style="width: 40%;">
+                <col style="width: 20%;">
+                <col style="width: 20%;">
+                <col style="width: 20%;">
+            </colgroup>
+            <tr>
+                <th>{{ __('Item') }}</th>
+                <th class="text-right">{{ __('Quantity') }}</th>
+                <th class="text-right">{{ __('Unit price') }}</th>
+                <th class="text-right">{{ __('Amount') }}</th>
+            </tr>
+            @foreach ($order->items as $item)
+                <tr>
+                    <td>{{ $item->purchasableDisplayName() }}</td>
+                    <td class="text-right">{{ $item->quantity }}</td>
+                    <td class="text-right">{{ number_format((float) $item->unit_price, 2) }} {{ $item->currency }}</td>
+                    <td class="text-right">{{ number_format((float) $item->amount, 2) }} {{ $item->currency }}</td>
+                </tr>
+            @endforeach
+        </table>
+    @elseif (! $order->isMultiItem())
+        <div class="section-title">{{ __('Items') }}</div>
+        <table class="data">
+            <colgroup>
+                <col style="width: 50%;">
+                <col style="width: 20%;">
+                <col style="width: 30%;">
+            </colgroup>
+            <tr>
+                <th>{{ __('Item') }}</th>
+                <th class="text-right">{{ __('Quantity') }}</th>
+                <th class="text-right">{{ __('Amount') }}</th>
+            </tr>
+            <tr>
+                <td>{{ $order->purchasableDisplayName() }}</td>
+                <td class="text-right">{{ $order->quantity }}</td>
+                <td class="text-right">{{ number_format((float) $order->amount, 2) }} {{ $order->currency }}</td>
+            </tr>
+        </table>
+    @endif
+
     @if ($order->transactions->isNotEmpty())
         <div class="section-title">{{ __('Payment history') }}</div>
         <table class="data">
+            <colgroup>
+                <col style="width: 15%;">
+                <col style="width: 11%;">
+                <col style="width: 12%;">
+                <col style="width: 17%;">
+                <col style="width: 11%;">
+                <col style="width: 17%;">
+                <col style="width: 17%;">
+            </colgroup>
             <tr>
                 <th>{{ __('Transaction #') }}</th>
                 <th>{{ __('Type') }}</th>

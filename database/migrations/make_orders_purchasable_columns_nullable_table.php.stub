@@ -1,0 +1,146 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Multi-item orders (see CreateMultiItemOrder / Buyer::purchaseMultiple())
+ * don't have a single purchasable, so purchasable_type/purchasable_id/
+ * quantity need to become nullable on an existing, already-deployed
+ * `orders` table.
+ *
+ * This intentionally avoids Blueprint::change() (which needs doctrine/dbal
+ * on every driver under Laravel 10) in favour of driver-specific DDL. If
+ * your app has added its own custom columns directly to the `orders` table,
+ * review the SQLite branch below before running this migration — it
+ * rebuilds the table from the package's known v2.x column set.
+ */
+return new class extends Migration
+{
+    /**
+     * The SQLite rebuild below runs its own PRAGMA statements and must not
+     * be wrapped in the implicit migration transaction.
+     */
+    public $withinTransaction = false;
+
+    public function up(): void
+    {
+        $table = config('purchasable.tables.orders', 'orders');
+
+        match (DB::connection()->getDriverName()) {
+            'mysql' => $this->upMysql($table),
+            'pgsql' => $this->upPgsql($table),
+            'sqlite' => $this->upSqlite($table),
+            default => throw new RuntimeException('Unsupported database driver for purchasable orders migration: '.DB::connection()->getDriverName()),
+        };
+    }
+
+    public function down(): void
+    {
+        $table = config('purchasable.tables.orders', 'orders');
+
+        match (DB::connection()->getDriverName()) {
+            'mysql' => $this->downMysql($table),
+            'pgsql' => $this->downPgsql($table),
+            'sqlite' => $this->downSqlite($table),
+            default => throw new RuntimeException('Unsupported database driver for purchasable orders migration: '.DB::connection()->getDriverName()),
+        };
+    }
+
+    protected function upMysql(string $table): void
+    {
+        DB::statement("ALTER TABLE `{$table}` MODIFY `purchasable_type` VARCHAR(255) NULL");
+        DB::statement("ALTER TABLE `{$table}` MODIFY `purchasable_id` BIGINT UNSIGNED NULL");
+        DB::statement("ALTER TABLE `{$table}` MODIFY `quantity` INT UNSIGNED NULL DEFAULT 1");
+    }
+
+    protected function downMysql(string $table): void
+    {
+        DB::statement("ALTER TABLE `{$table}` MODIFY `purchasable_type` VARCHAR(255) NOT NULL");
+        DB::statement("ALTER TABLE `{$table}` MODIFY `purchasable_id` BIGINT UNSIGNED NOT NULL");
+        DB::statement("ALTER TABLE `{$table}` MODIFY `quantity` INT UNSIGNED NOT NULL DEFAULT 1");
+    }
+
+    protected function upPgsql(string $table): void
+    {
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"purchasable_type\" DROP NOT NULL");
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"purchasable_id\" DROP NOT NULL");
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"quantity\" DROP NOT NULL");
+    }
+
+    protected function downPgsql(string $table): void
+    {
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"purchasable_type\" SET NOT NULL");
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"purchasable_id\" SET NOT NULL");
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"quantity\" SET NOT NULL");
+    }
+
+    /**
+     * SQLite has no ALTER COLUMN, so the table is rebuilt: a new table is
+     * created with the desired (nullable) schema, data is copied over, the
+     * old table is dropped, and the new one is renamed into place. SQLite
+     * automatically repoints the `transactions.order_id` foreign key and
+     * the `sqlite_sequence` autoincrement counter to the renamed table.
+     */
+    protected function upSqlite(string $table): void
+    {
+        $this->rebuildSqliteOrdersTable($table, purchasableNullable: true);
+    }
+
+    protected function downSqlite(string $table): void
+    {
+        $this->rebuildSqliteOrdersTable($table, purchasableNullable: false);
+    }
+
+    protected function rebuildSqliteOrdersTable(string $table, bool $purchasableNullable): void
+    {
+        $tmpTable = $table.'_tmp_purchasable_nullable';
+
+        // Captured (not recreated inline) so the rebuilt table ends up with
+        // identically-named indexes, including the order_number unique
+        // index, instead of ones scoped to the temporary table name.
+        $indexes = DB::select(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+            [$table],
+        );
+
+        DB::statement('PRAGMA foreign_keys = OFF');
+
+        Schema::create($tmpTable, function ($blueprint) use ($purchasableNullable) {
+            $blueprint->id();
+            $blueprint->string('order_number');
+            $blueprint->string('buyer_type');
+            $blueprint->unsignedBigInteger('buyer_id');
+            $purchasableType = $blueprint->string('purchasable_type');
+            $purchasableId = $blueprint->unsignedBigInteger('purchasable_id');
+            $quantity = $blueprint->unsignedInteger('quantity')->default(1);
+
+            if ($purchasableNullable) {
+                $purchasableType->nullable();
+                $purchasableId->nullable();
+                $quantity->nullable();
+            }
+
+            $blueprint->string('status');
+            $blueprint->decimal('amount', 10, 3);
+            $blueprint->char('currency', 3);
+            $blueprint->timestamp('paid_at')->nullable();
+            $blueprint->json('meta')->nullable();
+            $blueprint->timestamps();
+            $blueprint->softDeletes();
+        });
+
+        $columns = 'id, order_number, buyer_type, buyer_id, purchasable_type, purchasable_id, quantity, status, amount, currency, paid_at, meta, created_at, updated_at, deleted_at';
+        DB::statement("INSERT INTO \"{$tmpTable}\" ({$columns}) SELECT {$columns} FROM \"{$table}\"");
+
+        Schema::drop($table);
+        Schema::rename($tmpTable, $table);
+
+        foreach ($indexes as $index) {
+            DB::statement($index->sql);
+        }
+
+        DB::statement('PRAGMA foreign_keys = ON');
+    }
+};

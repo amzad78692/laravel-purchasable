@@ -2,6 +2,7 @@
 
 namespace Amzad\LaravelPurchasable\Concerns;
 
+use Amzad\LaravelPurchasable\Actions\CreateMultiItemOrder;
 use Amzad\LaravelPurchasable\Actions\CreateOrder;
 use Amzad\LaravelPurchasable\Contracts\Purchasable as PurchasableContract;
 use Amzad\LaravelPurchasable\Models\Order;
@@ -43,6 +44,18 @@ trait Buyer
     public function purchase(Model&PurchasableContract $purchasable, array $options = []): Order
     {
         return app(CreateOrder::class)->execute($purchasable, $this, $options);
+    }
+
+    /**
+     * Creates a multi-item ("cart-style") order in one atomic call — see
+     * CreateMultiItemOrder for the $items shape and $options.
+     *
+     * @param  array<int, array{purchasable: Model&PurchasableContract, quantity?: int, unit_price?: string|int|float, meta?: array}>  $items
+     * @param  array{currency?: string, meta?: array}  $options
+     */
+    public function purchaseMultiple(array $items, array $options = []): Order
+    {
+        return app(CreateMultiItemOrder::class)->execute($items, $this, $options);
     }
 
     /**

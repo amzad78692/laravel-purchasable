@@ -5,16 +5,48 @@ use Amzad\LaravelPurchasable\Filament\PurchasablePlugin;
 use Amzad\LaravelPurchasable\Filament\Resources\OrderResource;
 use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\Pages\ListOrders;
 use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\Pages\ViewOrder;
+use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\RelationManagers\ItemsRelationManager;
 use Amzad\LaravelPurchasable\Models\Order;
+use Amzad\LaravelPurchasable\Models\OrderItem;
 use Amzad\LaravelPurchasable\Models\Transaction;
+use Amzad\LaravelPurchasable\Tests\Fixtures\TestBuyer;
+use Amzad\LaravelPurchasable\Tests\Fixtures\TestBuyerWithDisplayName;
+use Amzad\LaravelPurchasable\Tests\Fixtures\TestPurchasable;
+use Amzad\LaravelPurchasable\Tests\Fixtures\TestPurchasableWithDisplayName;
 use Filament\Actions\ExportAction;
 use Filament\Actions\ExportBulkAction;
 use Filament\Actions\Exports\Models\Export;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
+use Filament\Tables\Columns\Column;
 use Filament\Tables\Table;
 use Mccarlosen\LaravelMpdf\Facades\LaravelMpdf as Pdf;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+
+function makeItemsRelationManager(Order $order): ItemsRelationManager
+{
+    $relationManager = new ItemsRelationManager;
+    $relationManager->ownerRecord = $order;
+    $relationManager->pageClass = ViewOrder::class;
+
+    return $relationManager;
+}
+
+/**
+ * Column::getState() needs a fully mounted Livewire table (it reaches back
+ * into the owning page/relation manager's $table property for context),
+ * which isn't available when a Table is built standalone in a test. The
+ * getStateUsing() closures wired up in OrderResource/ItemsRelationManager
+ * are plain `fn (Model $record) => ...` callbacks with no such
+ * dependency, so pull the closure out directly and call it.
+ */
+function columnState(Column $column, Order|OrderItem $record): mixed
+{
+    $property = new ReflectionProperty($column, 'getStateUsing');
+    $property->setAccessible(true);
+
+    return ($property->getValue($column))($record);
+}
 
 it('registers the order resource on the panel by default', function () {
     expect(PurchasablePlugin::make()->getResources())->toContain(OrderResource::class);
@@ -143,6 +175,82 @@ it('returns a StreamedResponse from the invoice action so Livewire recognizes it
     expect($content)->toStartWith('%PDF');
 });
 
+it('includes a line-items table in the invoice for a multi-item order', function () {
+    $buyer = TestBuyer::create();
+    $purchasable = TestPurchasable::create(['price' => '10.000']);
+    $order = $buyer->purchaseMultiple([
+        ['purchasable' => $purchasable, 'quantity' => 2],
+    ]);
+
+    $html = view('purchasable::orders.invoice', ['order' => $order->load(['transactions', 'items'])])->render();
+
+    expect($html)->toContain('Test Purchasable')
+        ->toContain('20.00');
+});
+
+it('shows a "Billed to" block with the resolved buyer display name in the invoice', function () {
+    $buyer = TestBuyerWithDisplayName::create(['name' => 'Jane Doe']);
+    $purchasable = TestPurchasable::create(['price' => '10.000']);
+    $order = $buyer->purchase($purchasable);
+
+    $html = view('purchasable::orders.invoice', ['order' => $order->load(['transactions', 'items'])])->render();
+
+    expect($html)->toContain('Billed to')
+        ->toContain('Jane Doe');
+});
+
+it('shows a purchasable line for a single-item order in the invoice, which previously showed nothing', function () {
+    $buyer = TestBuyer::create();
+    $purchasable = TestPurchasableWithDisplayName::create(['price' => '10.000', 'name' => 'VIP Ticket']);
+    $order = $buyer->purchase($purchasable);
+
+    $html = view('purchasable::orders.invoice', ['order' => $order->load(['transactions', 'items'])])->render();
+
+    expect($html)->toContain('VIP Ticket');
+});
+
+it('shows the resolved buyer and purchasable display names in the orders table', function () {
+    $buyer = TestBuyerWithDisplayName::create(['name' => 'Jane Doe']);
+    $purchasable = TestPurchasableWithDisplayName::create(['price' => '10.000', 'name' => 'VIP Ticket']);
+    $order = $buyer->purchase($purchasable);
+
+    $columns = OrderResource::table(Table::make(new ListOrders))->getColumns();
+
+    $buyerColumn = collect($columns)->first(fn ($column) => $column->getName() === 'buyer_display');
+    $purchasableColumn = collect($columns)->first(fn ($column) => $column->getName() === 'purchasable_display');
+
+    expect(columnState($buyerColumn, $order))->toBe('Jane Doe')
+        ->and(columnState($purchasableColumn, $order))->toBe('VIP Ticket');
+});
+
+it('shows the resolved buyer and purchasable display names in the order infolist', function () {
+    $buyer = TestBuyerWithDisplayName::create(['name' => 'Jane Doe']);
+    $purchasable = TestPurchasableWithDisplayName::create(['price' => '10.000', 'name' => 'VIP Ticket']);
+    $order = $buyer->purchase($purchasable);
+
+    $schema = OrderResource::infolist(Schema::make(new ViewOrder))->record($order);
+
+    $buyerEntry = $schema->getComponent(fn ($component) => $component instanceof TextEntry && $component->getName() === 'buyer_display');
+    $purchasableEntry = $schema->getComponent(fn ($component) => $component instanceof TextEntry && $component->getName() === 'purchasable_display');
+
+    expect($buyerEntry->getState())->toBe('Jane Doe')
+        ->and($purchasableEntry->getState())->toBe('VIP Ticket');
+});
+
+it('hides the purchasable infolist entry for a multi-item order', function () {
+    $buyer = TestBuyer::create();
+    $purchasable = TestPurchasable::create(['price' => '10.000']);
+    $order = $buyer->purchaseMultiple([
+        ['purchasable' => $purchasable, 'quantity' => 1],
+    ]);
+
+    $schema = OrderResource::infolist(Schema::make(new ViewOrder))->record($order);
+
+    $purchasableEntry = $schema->getComponent(fn ($component) => $component instanceof TextEntry && $component->getName() === 'purchasable_display');
+
+    expect($purchasableEntry)->toBeNull();
+});
+
 it('sanitizes invalid UTF-8 bytes before handing the invoice HTML to mpdf', function () {
     // Real-world gateway values occasionally contain invalid UTF-8 byte sequences
     // (e.g. a corrupted webhook payload). mPDF's loadHTML() rejects those
@@ -185,4 +293,54 @@ it('safely renders order meta mixing scalar and nested values', function () {
         ->and($state)->toContain('"seat_tier"');
 
     expect(fn () => $entry->toEmbeddedHtml())->not->toThrow(Throwable::class);
+});
+
+it('hides the items relation manager for a single-item order', function () {
+    $order = Order::factory()->paid()->create();
+
+    expect(ItemsRelationManager::canViewForRecord($order, ViewOrder::class))->toBeFalse();
+});
+
+it('shows the items relation manager, listing each line item, for a multi-item order', function () {
+    $buyer = TestBuyer::create();
+    $purchasable = TestPurchasable::create(['price' => '10.000']);
+    $order = $buyer->purchaseMultiple([
+        ['purchasable' => $purchasable, 'quantity' => 3],
+    ]);
+
+    expect(ItemsRelationManager::canViewForRecord($order, ViewOrder::class))->toBeTrue();
+
+    $relationManager = makeItemsRelationManager($order);
+
+    expect($relationManager->getRelationship()->get()->pluck('id')->sort()->values())
+        ->toEqual($order->items->pluck('id')->sort()->values());
+});
+
+it('renders the items relation manager using Filament\'s built-in Table component, not an infolist entry', function () {
+    $order = Order::factory()->create();
+
+    $relationManager = makeItemsRelationManager($order);
+    $table = $relationManager->table(Table::make($relationManager));
+
+    expect($table)->toBeInstanceOf(Table::class);
+
+    $columnNames = collect($table->getColumns())->map->getName()->values()->all();
+
+    expect($columnNames)->toBe(['purchasable_display', 'purchasable_type', 'purchasable_id', 'quantity', 'unit_price', 'amount', 'status']);
+});
+
+it('shows the resolved purchasable display name as a relation manager table column', function () {
+    $buyer = TestBuyer::create();
+    $purchasable = TestPurchasableWithDisplayName::create(['price' => '10.000', 'name' => 'VIP Ticket']);
+    $order = $buyer->purchaseMultiple([
+        ['purchasable' => $purchasable, 'quantity' => 1],
+    ]);
+
+    $relationManager = makeItemsRelationManager($order);
+    $table = $relationManager->table(Table::make($relationManager));
+
+    $column = collect($table->getColumns())->first(fn ($column) => $column->getName() === 'purchasable_display');
+    $item = $order->items()->first();
+
+    expect(columnState($column, $item))->toBe('VIP Ticket');
 });

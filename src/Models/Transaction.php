@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $transaction_number
  * @property int $order_id
+ * @property int|null $order_item_id
  * @property TransactionType $type
  * @property string $gateway
  * @property string|null $gateway_transaction_id
@@ -24,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Order $order
+ * @property-read OrderItem|null $orderItem
  */
 class Transaction extends Model
 {
@@ -55,5 +57,16 @@ class Transaction extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    /**
+     * Set only when this transaction is scoped to a single line item of a
+     * multi-item order (see RecordTransaction's $item parameter).
+     *
+     * @return BelongsTo<OrderItem, $this>
+     */
+    public function orderItem(): BelongsTo
+    {
+        return $this->belongsTo(OrderItem::class);
     }
 }

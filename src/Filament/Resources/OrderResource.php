@@ -7,6 +7,7 @@ use Amzad\LaravelPurchasable\Filament\Exports\OrderExporter;
 use Amzad\LaravelPurchasable\Filament\PurchasablePlugin;
 use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\Pages\ListOrders;
 use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\Pages\ViewOrder;
+use Amzad\LaravelPurchasable\Filament\Resources\OrderResource\RelationManagers\ItemsRelationManager;
 use Amzad\LaravelPurchasable\Models\Order;
 use Amzad\LaravelPurchasable\States\Order\OrderState;
 use BackedEnum;
@@ -21,6 +22,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\TextSize;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
@@ -93,21 +95,30 @@ class OrderResource extends Resource
                 Section::make(__('Buyer & purchasable'))
                     ->columns(2)
                     ->schema([
-                        Grid::make(2)
+                        Grid::make(1)
                             ->schema([
+                                TextEntry::make('buyer_display')
+                                    ->label(__('Buyer'))
+                                    ->getStateUsing(fn (Order $record): string => $record->buyerDisplayName()),
                                 TextEntry::make('buyer_type')
-                                    ->label(__('Buyer type'))
-                                    ->formatStateUsing(fn (string $state): string => class_basename($state)),
-                                TextEntry::make('buyer_id')
-                                    ->label(__('Buyer ID')),
+                                    ->label(__('Type & ID'))
+                                    ->hiddenLabel()
+                                    ->size(TextSize::Small)
+                                    ->color('gray')
+                                    ->formatStateUsing(fn (string $state, Order $record): string => class_basename($state).' #'.$record->buyer_id),
                             ]),
-                        Grid::make(2)
+                        Grid::make(1)
+                            ->visible(fn (Order $record): bool => ! $record->isMultiItem())
                             ->schema([
+                                TextEntry::make('purchasable_display')
+                                    ->label(__('Purchasable'))
+                                    ->getStateUsing(fn (Order $record): string => $record->purchasableDisplayName()),
                                 TextEntry::make('purchasable_type')
-                                    ->label(__('Purchasable type'))
-                                    ->formatStateUsing(fn (string $state): string => class_basename($state)),
-                                TextEntry::make('purchasable_id')
-                                    ->label(__('Purchasable ID')),
+                                    ->label(__('Type & ID'))
+                                    ->hiddenLabel()
+                                    ->size(TextSize::Small)
+                                    ->color('gray')
+                                    ->formatStateUsing(fn (?string $state, Order $record): string => $state !== null ? class_basename($state).' #'.$record->purchasable_id : ''),
                             ]),
                     ]),
                 Section::make(__('Meta'))
@@ -138,17 +149,23 @@ class OrderResource extends Resource
                     ->formatStateUsing(fn (OrderState $state): string => $state->label())
                     ->color(fn (OrderState $state): string => static::statusColor($state->getValue()))
                     ->sortable(),
+                TextColumn::make('buyer_display')
+                    ->label(__('Buyer'))
+                    ->getStateUsing(fn (Order $record): string => $record->buyerDisplayName()),
                 TextColumn::make('buyer_type')
                     ->label(__('Buyer type'))
                     ->formatStateUsing(fn (string $state): string => class_basename($state))
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('buyer_id')
                     ->label(__('Buyer ID'))
                     ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('purchasable_display')
+                    ->label(__('Purchasable'))
+                    ->getStateUsing(fn (Order $record): string => $record->isMultiItem() ? __('Multiple items') : $record->purchasableDisplayName()),
                 TextColumn::make('purchasable_type')
                     ->label(__('Purchasable type'))
-                    ->formatStateUsing(fn (string $state): string => class_basename($state))
-                    ->toggleable(),
+                    ->formatStateUsing(fn (?string $state): string => $state !== null ? class_basename($state) : '')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('purchasable_id')
                     ->label(__('Purchasable ID'))
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -202,7 +219,14 @@ class OrderResource extends Resource
             ->color('gray')
             ->visible(fn (): bool => class_exists(LaravelMpdf::class))
             ->action(function (Order $record) {
-                $record->loadMissing('transactions');
+                // buyer/purchasable are deliberately NOT eager-loaded here (or
+                // anywhere in this resource): Eloquent's MorphTo eager loading
+                // unconditionally instantiates the morph class, so a single
+                // stale/renamed buyer_type or purchasable_type value would
+                // throw and break the whole invoice, not just degrade its
+                // display. buyerDisplayName()/purchasableDisplayName() guard
+                // against that on the lazy path instead (see ResolvesDisplayName).
+                $record->loadMissing(['transactions', 'items']);
 
                 $pdf = LaravelMpdf::loadView('purchasable::orders.invoice', ['order' => $record])
                     ->output();
@@ -280,6 +304,16 @@ class OrderResource extends Resource
         return [
             'index' => ListOrders::route('/'),
             'view' => ViewOrder::route('/{record}'),
+        ];
+    }
+
+    /**
+     * @return array<class-string>
+     */
+    public static function getRelations(): array
+    {
+        return [
+            ItemsRelationManager::class,
         ];
     }
 }

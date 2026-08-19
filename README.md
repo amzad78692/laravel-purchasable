@@ -52,6 +52,13 @@ class Event extends Model implements PurchasableContract
     {
         return $this->currency;
     }
+
+    // Optional — falls back to "Event #123" (the raw morph type + ID) in the
+    // Filament admin and PDF invoice if omitted.
+    public function getPurchasableDisplayName(): string
+    {
+        return $this->title;
+    }
 }
 ```
 
@@ -64,6 +71,13 @@ use Amzad\LaravelPurchasable\Contracts\Buyer as BuyerContract;
 class User extends Authenticatable implements BuyerContract
 {
     use Buyer;
+
+    // Optional — falls back to "User #123" (the raw morph type + ID) in the
+    // Filament admin and PDF invoice if omitted.
+    public function getBuyerDisplayName(): string
+    {
+        return $this->name;
+    }
 }
 ```
 
@@ -147,6 +161,31 @@ use Amzad\LaravelPurchasable\Actions\CancelOrder;
 
 app(CancelOrder::class)->execute($order); // Pending|Failed -> Cancelled, fires OrderCancelled
 ```
+
+### Multi-item orders (cart-style checkout)
+
+For ecommerce-style purchases — a basket with several, possibly different, purchasables — build the order directly from an array of items in one atomic call. There's no persistent cart entity; assemble the item list however you like (session, request payload, etc.) and hand it off:
+
+```php
+$order = $user->purchaseMultiple([
+    ['purchasable' => $tShirt, 'quantity' => 2],
+    ['purchasable' => $subscriptionPlan, 'quantity' => 1],
+]);
+```
+
+Each entry becomes an `OrderItem` (`$order->items`), independently morphing to its own purchasable — an order can mix types freely. `purchasable_type`/`purchasable_id`/`quantity` stay `null` on a multi-item `Order`; those columns are only populated for the single-item flow above. `unit_price` defaults to `getPurchasablePrice()` per item, and `order.amount` is the summed total.
+
+`allow_repurchase`/`allow_multiple_pending_orders` are **not** enforced on multi-item orders by default — a cart routinely contains repeat or concurrent purchases of the same item, unlike a one-time ticket/subscription. Set `purchasable.multi_item.enforce_purchase_guards` to `true` to re-apply the same per-item checks `purchase()` uses.
+
+Refunds can target a single line item instead of the whole order — this also doubles as "cancel this item" (there's no pre-payment cart to remove it from, so cancelling a paid item is a full refund of just that item):
+
+```php
+app(RefundOrder::class)->execute($order, TransactionStatus::Success, item: $itemToCancel);
+```
+
+This fires `OrderItemRefunded`/`OrderItemPartiallyRefunded` for the item, independently of the order's own aggregate status — refunding one item out of several only moves the *order* to `PartiallyRefunded`, not `Refunded`, while other items remain unrefunded.
+
+> **Upgrading from a version without multi-item support:** publish and run the new migrations (`create_order_items_table`, `make_orders_purchasable_columns_nullable_table`, `add_order_item_id_to_transactions_table`). If you have existing `OrderCreated`/`OrderPaid` listeners that assume `$event->order->purchasable` is non-null, guard them — a multi-item order leaves that relation null and stores its items on `$order->items` instead.
 
 ### Expire abandoned pending orders
 

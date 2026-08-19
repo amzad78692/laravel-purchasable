@@ -5,7 +5,6 @@ namespace Amzad\LaravelPurchasable\Tests;
 use Amzad\LaravelPurchasable\LaravelPurchasableServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -31,8 +30,8 @@ class TestCase extends Orchestra
     {
         config()->set('database.default', 'testing');
 
-        foreach (File::allFiles(__DIR__.'/../database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
+        foreach (LaravelPurchasableServiceProvider::MIGRATIONS as $migration) {
+            (include __DIR__."/../database/migrations/{$migration}.php.stub")->up();
         }
 
         $this->setUpFixtureTables();
@@ -47,6 +46,13 @@ class TestCase extends Orchestra
         });
 
         Schema::create('test_purchasables', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->decimal('price', 10, 3)->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('test_subscribables', function (Blueprint $table) {
             $table->id();
             $table->string('name')->nullable();
             $table->decimal('price', 10, 3)->default(0);
