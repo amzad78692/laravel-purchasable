@@ -30,7 +30,7 @@
     },
     "require-dev": {
         "carlos-meneses/laravel-mpdf": "^2.1",
-        "filament/filament": "^4.0",
+        "filament/filament": "^5.9",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
         "nunomaduro/collision": "^8.8",
