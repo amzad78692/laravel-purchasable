@@ -2,6 +2,21 @@
 
 All notable changes to `laravel-purchasable` will be documented in this file.
 
+## v4.0.0 - 2026-10-26
+
+### Added
+- Guest checkout: `Purchasable::purchaseAsGuest()` for single-item orders, and a `null` buyer with `$options['guest']` on `CreateMultiItemOrder`, behind the `allow_guest_checkout` config flag (off by default).
+- `guest_email`, `guest_name`, `guest_phone` and `access_token` columns on orders, plus the `add_guest_checkout_to_orders_table` upgrade migration.
+- `Order::isGuest()`, `buyerEmail()`, `findByAccessToken()`, and the `guest()` and `forGuest()` scopes.
+- `Purchasable::isPurchasedByGuest()`, `Buyer::claimGuestOrders()`, the `OrderClaimed` event and `GuestCheckoutException`.
+- Filament: guest filter, guest email column, guest details on the order view, and guest columns in the export. `Order::buyerDisplayName()` returns the guest's name or email, so the admin and the invoice's "Billed to" block show the guest.
+- `OrderFactory::guest()` state.
+
+### Breaking
+- `orders.buyer_type` and `orders.buyer_id` are now nullable.
+- The `Buyer` contract now requires `claimGuestOrders()`.
+- `CreateOrder::execute()` and `CreateMultiItemOrder::execute()` accept a nullable buyer.
+
 ## v3.0.0 - 2026-08-20
 
 ### Added

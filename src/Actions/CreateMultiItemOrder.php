@@ -8,7 +8,9 @@ use Amzad\LaravelPurchasable\Enums\OrderItemStatus;
 use Amzad\LaravelPurchasable\Events\OrderCreated;
 use Amzad\LaravelPurchasable\Exceptions\AlreadyPurchasedException;
 use Amzad\LaravelPurchasable\Exceptions\CurrencyMismatchException;
+use Amzad\LaravelPurchasable\Exceptions\GuestCheckoutException;
 use Amzad\LaravelPurchasable\Models\Order;
+use Amzad\LaravelPurchasable\Support\GuestCheckout;
 use Amzad\LaravelPurchasable\Support\OrderNumberGenerator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +28,9 @@ use InvalidArgumentException;
  * buying the same item more than once is normal. Set
  * purchasable.multi_item.enforce_purchase_guards to re-apply the same
  * per-item checks CreateOrder uses.
+ *
+ * Pass a null $buyer together with $options['guest'] to create a guest
+ * order (requires purchasable.allow_guest_checkout).
  */
 class CreateMultiItemOrder
 {
@@ -33,19 +38,31 @@ class CreateMultiItemOrder
 
     /**
      * @param  array<int, array{purchasable: Model&PurchasableContract, quantity?: int, unit_price?: string|int|float, meta?: array}>  $items
-     * @param  array{currency?: string, meta?: array}  $options
+     * @param  array{currency?: string, meta?: array, guest?: array{email: string, name?: string|null, phone?: string|null}}  $options
+     *
+     * @throws GuestCheckoutException
      */
-    public function execute(array $items, Model&BuyerContract $buyer, array $options = []): Order
+    public function execute(array $items, (Model&BuyerContract)|null $buyer, array $options = []): Order
     {
         if ($items === []) {
             throw new InvalidArgumentException('CreateMultiItemOrder::execute() requires at least one item.');
         }
+
+        $buyerAttributes = $buyer === null
+            ? GuestCheckout::attributes($options['guest'] ?? [])
+            : ['buyer_type' => $buyer->getMorphClass(), 'buyer_id' => $buyer->getKey()];
 
         $enforceGuards = config('purchasable.multi_item.enforce_purchase_guards', false);
 
         if ($enforceGuards) {
             foreach ($items as $input) {
                 $purchasable = $input['purchasable'];
+
+                if ($buyer === null) {
+                    GuestCheckout::guardAgainstDuplicate($buyerAttributes['guest_email'], $purchasable);
+
+                    continue;
+                }
 
                 if (
                     (! config('purchasable.allow_repurchase', false) && $buyer->hasPurchased($purchasable))
@@ -56,13 +73,12 @@ class CreateMultiItemOrder
             }
         }
 
-        return DB::transaction(function () use ($items, $buyer, $options) {
+        return DB::transaction(function () use ($items, $buyerAttributes, $options) {
             $currency = $options['currency'] ?? $this->purchasableCurrency($items[0]['purchasable']);
 
             $order = Order::create([
                 'order_number' => $this->orderNumbers->generate('order_number'),
-                'buyer_type' => $buyer->getMorphClass(),
-                'buyer_id' => $buyer->getKey(),
+                ...$buyerAttributes,
                 'purchasable_type' => null,
                 'purchasable_id' => null,
                 'quantity' => null,

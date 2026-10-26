@@ -45,6 +45,22 @@ trait Purchasable
         return app(CreateOrder::class)->execute($this, $buyer, $options);
     }
 
+    /**
+     * @param  array{email: string, name?: string|null, phone?: string|null}  $guest
+     */
+    public function purchaseAsGuest(array $guest, array $options = []): Order
+    {
+        return app(CreateOrder::class)->execute($this, null, [...$options, 'guest' => $guest]);
+    }
+
+    public function isPurchasedByGuest(string $email): bool
+    {
+        return $this->orders()
+            ->where('guest_email', Order::normalizeGuestEmail($email))
+            ->whereState('status', PaidState::class)
+            ->exists();
+    }
+
     public function isPurchasedBy(Model $buyer): bool
     {
         return $this->orders()

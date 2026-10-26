@@ -278,6 +278,14 @@
     <div class="section-title">{{ __('Billed to') }}</div>
     <div class="meta-box">
         <div class="row"><strong>{{ $order->buyerDisplayName() }}</strong></div>
+        @if ($order->isGuest())
+            @if ($order->guest_name)
+                <div class="row">{{ $order->guest_email }}</div>
+            @endif
+            @if ($order->guest_phone)
+                <div class="row">{{ $order->guest_phone }}</div>
+            @endif
+        @endif
     </div>
 
     @if ($order->items->isNotEmpty())

@@ -55,6 +55,16 @@ return [
     'allow_repurchase' => false,
 
     /*
+     * If true, orders can be created without a buyer model via
+     * $purchasable->purchaseAsGuest(['email' => ...]). Guest orders are
+     * identified by email (used for the repurchase / pending checks above)
+     * and carry an access_token the host app can use to let the guest view
+     * or pay for the order. Buyer::claimGuestOrders() attaches them to a
+     * real buyer later, e.g. after the guest registers.
+     */
+    'allow_guest_checkout' => false,
+
+    /*
      * Minutes after which a pending order is considered abandoned.
      * Null disables automatic expiry. When set, schedule
      * `purchasable:expire-orders` in the host app to act on it.

@@ -13,4 +13,12 @@ class AlreadyPurchasedException extends PurchasableException
             'purchasable' => "{$purchasable->getMorphClass()}:{$purchasable->getKey()}",
         ]));
     }
+
+    public static function forGuest(string $email, Model $purchasable): self
+    {
+        return new self(__('Guest [:email] already has a paid or pending order for purchasable [:purchasable].', [
+            'email' => $email,
+            'purchasable' => "{$purchasable->getMorphClass()}:{$purchasable->getKey()}",
+        ]));
+    }
 }

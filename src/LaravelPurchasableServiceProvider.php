@@ -25,6 +25,7 @@ class LaravelPurchasableServiceProvider extends PackageServiceProvider
         'create_order_items_table',
         'make_orders_purchasable_columns_nullable_table',
         'add_order_item_id_to_transactions_table',
+        'add_guest_checkout_to_orders_table',
     ];
 
     public function configurePackage(Package $package): void

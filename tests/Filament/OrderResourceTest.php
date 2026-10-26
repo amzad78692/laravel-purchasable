@@ -344,3 +344,50 @@ it('shows the resolved purchasable display name as a relation manager table colu
 
     expect(columnState($column, $item))->toBe('VIP Ticket');
 });
+
+it('filters guest and buyer orders', function () {
+    $guest = Order::factory()->guest()->create();
+    $buyer = Order::factory()->create();
+
+    $filter = OrderResource::table(Table::make(new ListOrders))->getFilters()['guest'];
+
+    expect($filter->apply(Order::query(), ['value' => true])->pluck('id')->all())->toBe([$guest->id])
+        ->and($filter->apply(Order::query(), ['value' => false])->pluck('id')->all())->toBe([$buyer->id]);
+});
+
+it('exports guest orders with a Guest buyer type and guest contact columns', function () {
+    $order = Order::factory()->guest('guest@example.com')->create(['guest_name' => 'Sam Guest']);
+
+    $exporter = new OrderExporter(new Export, [
+        'buyer_type' => 'buyer_type',
+        'guest_name' => 'guest_name',
+        'guest_email' => 'guest_email',
+    ], []);
+
+    expect($exporter($order))->toBe(['Guest', 'Sam Guest', 'guest@example.com']);
+});
+
+it('renders the guest billing details on the invoice', function () {
+    $order = Order::factory()->guest('guest@example.com')->paid()->create(['guest_name' => 'Sam Guest']);
+
+    $html = view('purchasable::orders.invoice', ['order' => $order->load('transactions')])->render();
+
+    expect($html)->toContain('Sam Guest')->toContain('guest@example.com');
+});
+
+it('falls back to a Guest placeholder for the buyer type of guest orders', function () {
+    // Filament renders the placeholder for blank state without calling
+    // formatStateUsing, so the string-typed closures never see null.
+    $columns = OrderResource::table(Table::make(new ListOrders))->getColumns();
+
+    expect($columns['buyer_type']->getPlaceholder())->toBe('Guest')
+        ->and($columns)->toHaveKey('guest_email');
+});
+
+it('shows the guest name as the buyer in the orders table', function () {
+    $order = Order::factory()->guest('guest@example.com')->create(['guest_name' => 'Sam Guest']);
+
+    $columns = OrderResource::table(Table::make(new ListOrders))->getColumns();
+
+    expect(columnState($columns['buyer_display'], $order))->toBe('Sam Guest');
+});

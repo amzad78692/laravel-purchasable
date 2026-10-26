@@ -24,6 +24,12 @@ php artisan vendor:publish --tag="purchasable-migrations"
 php artisan migrate
 ```
 
+#### Upgrading from v3
+
+v4 adds guest checkout. Publish the migrations again to get `add_guest_checkout_to_orders_table`. It makes `buyer_type`/`buyer_id` nullable and adds `guest_email`, `guest_name`, `guest_phone` and `access_token`. It uses driver-specific SQL (MySQL/MariaDB, PostgreSQL, SQLite), so `doctrine/dbal` is not needed. On SQLite it rebuilds the `orders` table from its current definition, so columns your app added are kept.
+
+The `Buyer` contract gained `claimGuestOrders()`. `CreateOrder::execute()` and `CreateMultiItemOrder::execute()` now accept a `null` buyer. If you implement the contract yourself instead of using the trait, add the new method.
+
 You can publish the config file with:
 
 ```bash
@@ -131,6 +137,73 @@ use Amzad\LaravelPurchasable\Actions\RetryOrder;
 
 app(RetryOrder::class)->execute($order); // Failed -> Pending, fires OrderRetried
 ```
+
+### Guest checkout
+
+Orders don't need a buyer model. Turn guest checkout on in the config:
+
+```php
+// config/purchasable.php
+'allow_guest_checkout' => true,
+```
+
+Then create the order from the purchasable side with the guest's contact details. `email` is required, and `name` and `phone` are optional:
+
+```php
+$order = $event->purchaseAsGuest(
+    ['email' => 'guest@example.com', 'name' => 'Sam Guest', 'phone' => '+96550000000'],
+    ['quantity' => 2],
+);
+
+$order->isGuest();      // true
+$order->buyerEmail();   // "guest@example.com"
+$order->access_token;   // random 64-char token, generated for guest orders only
+```
+
+- The guest is identified by email. The email is trimmed and lowercased before it is stored and compared. The `allow_repurchase` and `allow_multiple_pending_orders` checks apply per email, and a violation throws `AlreadyPurchasedException`.
+- A missing or malformed email throws `GuestCheckoutException`. So does any guest checkout while `allow_guest_checkout` is `false`.
+- Transactions, refunds, webhooks, state transitions and events work the same as for buyer orders.
+
+A guest can't log in, so use the `access_token` to give them a link to their order, for example to pay for it, check its status or download the invoice. The token is hidden from `toArray()` and JSON output.
+
+```php
+$order = Order::findByAccessToken($request->route('token')) ?? abort(404);
+```
+
+Query helpers:
+
+```php
+Order::query()->guest()->get();                       // orders without a buyer
+Order::query()->forGuest('guest@example.com')->get(); // orders placed with that email
+$event->isPurchasedByGuest('guest@example.com');
+```
+
+When a guest later registers, attach their guest orders to the new account. The default reads the buyer's `email` attribute, or you can pass an email explicitly:
+
+```php
+$user->claimGuestOrders();                    // returns the number of orders claimed
+$user->claimGuestOrders('guest@example.com');
+```
+
+Claimed orders move to the buyer, their `access_token` is revoked, and `OrderClaimed` fires for each one. `guest_email` stays on the order, so the guest can't get around the repurchase check by registering and checking out as a guest again.
+
+> **Only claim once the email is verified** (for example, after `email_verified_at` is set). Otherwise anyone could register with someone else's address and take over their orders.
+
+Multi-item orders work for guests too. Pass a `null` buyer and the guest details:
+
+```php
+use Amzad\LaravelPurchasable\Actions\CreateMultiItemOrder;
+
+$order = app(CreateMultiItemOrder::class)->execute(
+    [['purchasable' => $ticket, 'quantity' => 2], ['purchasable' => $merch]],
+    null,
+    ['guest' => ['email' => 'guest@example.com', 'name' => 'Sam Guest']],
+);
+```
+
+As with buyer orders, the repurchase and pending checks apply to multi-item guest orders only when `multi_item.enforce_purchase_guards` is on.
+
+In the Filament admin and on the invoice, a guest order shows the guest's name (or their email when no name was given) as the buyer.
 
 ### Check if a buyer has purchased something
 
@@ -268,7 +341,7 @@ PurchasablePlugin::make()
 
 Each table ships filters for the columns admins actually narrow down by:
 
-- **Orders** — Buyer (type + ID), Purchasable (type + ID), and a created-at date range, plus status and trashed.
+- **Orders** — Buyer (type + ID), Guest vs. buyer orders, Purchasable (type + ID), and a created-at date range, plus status and trashed. Guest orders show "Guest" as the buyer type, and the guest email column is searchable.
 - **Transactions** — Order (searchable by order number), Gateway, Currency, and a created-at date range, plus type and status.
 
 #### Export

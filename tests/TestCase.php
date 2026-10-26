@@ -42,6 +42,7 @@ class TestCase extends Orchestra
         Schema::create('test_buyers', function (Blueprint $table) {
             $table->id();
             $table->string('name')->nullable();
+            $table->string('email')->nullable();
             $table->timestamps();
         });
 

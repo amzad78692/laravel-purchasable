@@ -22,14 +22,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Spatie\ModelStates\Exceptions\CouldNotPerformTransition;
 use Spatie\ModelStates\HasStates;
 
 /**
  * @property int $id
  * @property string $order_number
- * @property string $buyer_type
- * @property int $buyer_id
+ * @property string|null $buyer_type null for guest orders — see isGuest()
+ * @property int|null $buyer_id null for guest orders — see isGuest()
+ * @property string|null $guest_email
+ * @property string|null $guest_name
+ * @property string|null $guest_phone
+ * @property string|null $access_token
  * @property string|null $purchasable_type null for multi-item orders — see items()
  * @property int|null $purchasable_id null for multi-item orders — see items()
  * @property int|null $quantity null for multi-item orders — see items()
@@ -52,6 +57,8 @@ class Order extends Model
     use SoftDeletes;
 
     protected $guarded = ['id'];
+
+    protected $hidden = ['access_token'];
 
     public function __construct(array $attributes = [])
     {
@@ -108,10 +115,15 @@ class Order extends Model
 
     /**
      * Falls back to "ClassName #id" when the buyer model doesn't implement
-     * the optional getBuyerDisplayName() method.
+     * the optional getBuyerDisplayName() method. Guest orders show the
+     * guest's name, or their email when no name was given.
      */
     public function buyerDisplayName(): string
     {
+        if ($this->isGuest()) {
+            return $this->guest_name ?: ($this->guest_email ?: __('Guest'));
+        }
+
         return $this->resolveDisplayName($this->buyer_type, $this->buyer_id, fn () => $this->buyer, 'getBuyerDisplayName');
     }
 
@@ -136,9 +148,54 @@ class Order extends Model
         return $query->whereState('status', PendingState::class);
     }
 
+    public function scopeGuest(Builder $query): Builder
+    {
+        return $query->whereNull('buyer_id');
+    }
+
+    /**
+     * Orders placed with this guest email, including ones since claimed by a
+     * buyer, so a guest can't sidestep the repurchase check by registering.
+     */
+    public function scopeForGuest(Builder $query, string $email): Builder
+    {
+        return $query->where('guest_email', static::normalizeGuestEmail($email));
+    }
+
     public function scopePaidBetween(Builder $query, DateTimeInterface $from, DateTimeInterface $to): Builder
     {
         return $query->whereState('status', PaidState::class)->whereBetween('paid_at', [$from, $to]);
+    }
+
+    public static function findByAccessToken(string $token): ?static
+    {
+        if ($token === '') {
+            return null;
+        }
+
+        return static::query()->where('access_token', $token)->first();
+    }
+
+    public static function normalizeGuestEmail(string $email): string
+    {
+        return Str::lower(trim($email));
+    }
+
+    public function isGuest(): bool
+    {
+        return $this->buyer_id === null;
+    }
+
+    /**
+     * The guest email, or the buyer's `email` attribute when it has one.
+     */
+    public function buyerEmail(): ?string
+    {
+        if ($this->isGuest()) {
+            return $this->guest_email;
+        }
+
+        return $this->buyer?->getAttribute('email') ?? $this->guest_email;
     }
 
     public function isPaid(): bool

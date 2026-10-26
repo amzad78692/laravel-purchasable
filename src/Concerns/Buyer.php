@@ -5,6 +5,7 @@ namespace Amzad\LaravelPurchasable\Concerns;
 use Amzad\LaravelPurchasable\Actions\CreateMultiItemOrder;
 use Amzad\LaravelPurchasable\Actions\CreateOrder;
 use Amzad\LaravelPurchasable\Contracts\Purchasable as PurchasableContract;
+use Amzad\LaravelPurchasable\Events\OrderClaimed;
 use Amzad\LaravelPurchasable\Models\Order;
 use Amzad\LaravelPurchasable\States\Order\PaidState;
 use Amzad\LaravelPurchasable\States\Order\PendingState;
@@ -66,5 +67,39 @@ trait Buyer
     public function purchaseHistory(): MorphMany
     {
         return $this->orders()->whereState('status', PaidState::class)->latest('paid_at');
+    }
+
+    /**
+     * Attach guest orders placed with this email to this buyer and revoke
+     * their access tokens. Only call this once the email is verified as
+     * belonging to this buyer, or anyone could claim someone else's orders.
+     *
+     * @return int number of orders claimed
+     */
+    public function claimGuestOrders(?string $email = null): int
+    {
+        $email ??= $this->getAttribute('email');
+
+        if (blank($email)) {
+            return 0;
+        }
+
+        $claimed = 0;
+
+        // get() rather than each(): each() pages by offset, and every save
+        // drops a row out of the guest() filter, which would skip rows.
+        Order::query()->guest()->forGuest($email)->get()->each(function (Order $order) use (&$claimed) {
+            $order->forceFill([
+                'buyer_type' => $this->getMorphClass(),
+                'buyer_id' => $this->getKey(),
+                'access_token' => null,
+            ])->save();
+
+            event(new OrderClaimed($order));
+
+            $claimed++;
+        });
+
+        return $claimed;
     }
 }

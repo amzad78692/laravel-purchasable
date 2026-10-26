@@ -17,4 +17,6 @@ interface Buyer
     public function purchase(Model&Purchasable $purchasable, array $options = []): Order;
 
     public function purchaseHistory(): MorphMany;
+
+    public function claimGuestOrders(?string $email = null): int;
 }

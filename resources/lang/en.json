@@ -63,5 +63,16 @@
     "Total paid": "Total paid",
     "Additional details": "Additional details",
     "Generated on :date": "Generated on :date",
-    "Meta": "Meta"
+    "Meta": "Meta",
+    "Guest": "Guest",
+    "Guest name": "Guest name",
+    "Guest email": "Guest email",
+    "Guest phone": "Guest phone",
+    "Guest orders": "Guest orders",
+    "Guest orders only": "Guest orders only",
+    "Buyer orders only": "Buyer orders only",
+    "Billed to": "Billed to",
+    "Guest [:email] already has a paid or pending order for purchasable [:purchasable].": "Guest [:email] already has a paid or pending order for purchasable [:purchasable].",
+    "Guest checkout is disabled. Enable purchasable.allow_guest_checkout to create orders without a buyer.": "Guest checkout is disabled. Enable purchasable.allow_guest_checkout to create orders without a buyer.",
+    "Guest checkout requires a valid email address.": "Guest checkout requires a valid email address."
 }

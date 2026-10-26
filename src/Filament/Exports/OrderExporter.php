@@ -26,9 +26,15 @@ class OrderExporter extends Exporter
                 ->formatStateUsing(fn (OrderState $state): string => $state->label()),
             ExportColumn::make('buyer_type')
                 ->label(__('Buyer type'))
-                ->formatStateUsing(fn (string $state): string => class_basename($state)),
+                ->formatStateUsing(fn (?string $state): string => filled($state) ? class_basename($state) : __('Guest')),
             ExportColumn::make('buyer_id')
                 ->label(__('Buyer ID')),
+            ExportColumn::make('guest_name')
+                ->label(__('Guest name')),
+            ExportColumn::make('guest_email')
+                ->label(__('Guest email')),
+            ExportColumn::make('guest_phone')
+                ->label(__('Guest phone')),
             ExportColumn::make('purchasable_type')
                 ->label(__('Purchasable type'))
                 ->formatStateUsing(fn (string $state): string => class_basename($state)),

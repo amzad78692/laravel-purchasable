@@ -8,6 +8,7 @@ use Amzad\LaravelPurchasable\States\Order\FailedState;
 use Amzad\LaravelPurchasable\States\Order\PaidState;
 use Amzad\LaravelPurchasable\States\Order\PendingState;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 class OrderFactory extends Factory
 {
@@ -47,5 +48,17 @@ class OrderFactory extends Factory
     public function cancelled(): static
     {
         return $this->state(fn () => ['status' => CancelledState::class]);
+    }
+
+    public function guest(?string $email = null): static
+    {
+        return $this->state(fn () => [
+            'buyer_type' => null,
+            'buyer_id' => null,
+            'guest_email' => $email ?? fake()->unique()->safeEmail(),
+            'guest_name' => fake()->name(),
+            'guest_phone' => fake()->phoneNumber(),
+            'access_token' => Str::random(64),
+        ]);
     }
 }

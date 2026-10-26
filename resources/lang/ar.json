@@ -63,5 +63,16 @@
     "Total paid": "إجمالي المدفوع",
     "Additional details": "تفاصيل إضافية",
     "Generated on :date": "تم الإنشاء في :date",
-    "Meta": "بيانات إضافية"
+    "Meta": "بيانات إضافية",
+    "Guest": "ضيف",
+    "Guest name": "اسم الضيف",
+    "Guest email": "البريد الإلكتروني للضيف",
+    "Guest phone": "هاتف الضيف",
+    "Guest orders": "طلبات الضيوف",
+    "Guest orders only": "طلبات الضيوف فقط",
+    "Buyer orders only": "طلبات المشترين فقط",
+    "Billed to": "فاتورة إلى",
+    "Guest [:email] already has a paid or pending order for purchasable [:purchasable].": "الضيف [:email] لديه بالفعل طلب مدفوع أو قيد الانتظار للعنصر [:purchasable].",
+    "Guest checkout is disabled. Enable purchasable.allow_guest_checkout to create orders without a buyer.": "الشراء كضيف معطل. فعّل purchasable.allow_guest_checkout لإنشاء طلبات بدون مشترٍ.",
+    "Guest checkout requires a valid email address.": "الشراء كضيف يتطلب بريدًا إلكترونيًا صالحًا."
 }

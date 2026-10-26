@@ -1,0 +1,132 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Guest checkout (see Purchasable::purchaseAsGuest()) creates orders with
+ * no buyer model, so buyer_type/buyer_id become nullable and the order
+ * carries the guest's contact details plus an access token instead.
+ *
+ * Runs on fresh installs too: make_orders_purchasable_columns_nullable_table
+ * rebuilds the SQLite orders table from a fixed column list, so these
+ * columns can't live in create_orders_table.
+ *
+ * Like that migration, this avoids Blueprint::change() (which needs
+ * doctrine/dbal on Laravel 10) in favour of driver-specific DDL. The SQLite
+ * branch rebuilds the table from its own CREATE statement, so custom columns
+ * a host app added to `orders` are kept.
+ */
+return new class extends Migration
+{
+    /**
+     * The SQLite rebuild below runs its own PRAGMA statements and must not
+     * be wrapped in the implicit migration transaction.
+     */
+    public $withinTransaction = false;
+
+    public function up(): void
+    {
+        $table = config('purchasable.tables.orders', 'orders');
+
+        if (! Schema::hasTable($table) || Schema::hasColumn($table, 'guest_email')) {
+            return;
+        }
+
+        match (DB::connection()->getDriverName()) {
+            'mysql', 'mariadb' => $this->upMysql($table),
+            'pgsql' => $this->upPgsql($table),
+            'sqlite' => $this->upSqlite($table),
+            default => throw new RuntimeException('Unsupported database driver for purchasable guest checkout migration: '.DB::connection()->getDriverName()),
+        };
+
+        Schema::table($table, function (Blueprint $blueprint) {
+            $blueprint->string('guest_email')->nullable();
+            $blueprint->string('guest_name')->nullable();
+            $blueprint->string('guest_phone')->nullable();
+            $blueprint->string('access_token', 64)->nullable()->unique();
+
+            $blueprint->index('guest_email');
+        });
+    }
+
+    /**
+     * buyer_type/buyer_id stay nullable: guest orders may already exist,
+     * and forcing NOT NULL back would fail on them.
+     */
+    public function down(): void
+    {
+        $table = config('purchasable.tables.orders', 'orders');
+
+        if (! Schema::hasColumn($table, 'guest_email')) {
+            return;
+        }
+
+        Schema::table($table, function (Blueprint $blueprint) {
+            $blueprint->dropIndex(['guest_email']);
+            $blueprint->dropUnique(['access_token']);
+        });
+
+        Schema::table($table, function (Blueprint $blueprint) {
+            $blueprint->dropColumn(['guest_email', 'guest_name', 'guest_phone', 'access_token']);
+        });
+    }
+
+    protected function upMysql(string $table): void
+    {
+        DB::statement("ALTER TABLE `{$table}` MODIFY `buyer_type` VARCHAR(255) NULL");
+        DB::statement("ALTER TABLE `{$table}` MODIFY `buyer_id` BIGINT UNSIGNED NULL");
+    }
+
+    protected function upPgsql(string $table): void
+    {
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"buyer_type\" DROP NOT NULL");
+        DB::statement("ALTER TABLE \"{$table}\" ALTER COLUMN \"buyer_id\" DROP NOT NULL");
+    }
+
+    /**
+     * SQLite has no ALTER COLUMN, so the table is rebuilt from its own
+     * CREATE statement with NOT NULL dropped from the buyer columns, the
+     * rows are copied over, and the indexes are recreated under their
+     * original names.
+     */
+    protected function upSqlite(string $table): void
+    {
+        $createSql = DB::selectOne("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [$table])->sql;
+
+        $nullableSql = preg_replace('/("?buyer_(?:type|id)"?\s+\w+(?:\(\d+\))?)\s+not null/i', '$1', $createSql, -1, $replaced);
+
+        if ($replaced === 0) {
+            return;
+        }
+
+        $tmpTable = $table.'_tmp_guest_checkout';
+
+        $nullableSql = preg_replace(
+            '/^CREATE TABLE\s+("?)'.preg_quote($table, '/').'\1/i',
+            "CREATE TABLE \"{$tmpTable}\"",
+            $nullableSql,
+        );
+
+        $indexes = DB::select(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+            [$table],
+        );
+
+        DB::statement('PRAGMA foreign_keys = OFF');
+
+        DB::statement($nullableSql);
+        DB::statement("INSERT INTO \"{$tmpTable}\" SELECT * FROM \"{$table}\"");
+
+        Schema::drop($table);
+        Schema::rename($tmpTable, $table);
+
+        foreach ($indexes as $index) {
+            DB::statement($index->sql);
+        }
+
+        DB::statement('PRAGMA foreign_keys = ON');
+    }
+};

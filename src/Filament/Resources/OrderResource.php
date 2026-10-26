@@ -27,6 +27,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -105,7 +106,16 @@ class OrderResource extends Resource
                                     ->hiddenLabel()
                                     ->size(TextSize::Small)
                                     ->color('gray')
-                                    ->formatStateUsing(fn (string $state, Order $record): string => class_basename($state).' #'.$record->buyer_id),
+                                    ->formatStateUsing(fn (string $state, Order $record): string => class_basename($state).' #'.$record->buyer_id)
+                                    ->placeholder(__('Guest')),
+                                TextEntry::make('guest_email')
+                                    ->label(__('Guest email'))
+                                    ->copyable()
+                                    ->visible(fn (Order $record): bool => filled($record->guest_email)),
+                                TextEntry::make('guest_phone')
+                                    ->label(__('Guest phone'))
+                                    ->placeholder('—')
+                                    ->visible(fn (Order $record): bool => filled($record->guest_email)),
                             ]),
                         Grid::make(1)
                             ->visible(fn (Order $record): bool => ! $record->isMultiItem())
@@ -155,13 +165,20 @@ class OrderResource extends Resource
                 TextColumn::make('buyer_type')
                     ->label(__('Buyer type'))
                     ->formatStateUsing(fn (string $state): string => class_basename($state))
+                    ->placeholder(__('Guest'))
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('buyer_id')
                     ->label(__('Buyer ID'))
+                    ->placeholder('—')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('purchasable_display')
                     ->label(__('Purchasable'))
                     ->getStateUsing(fn (Order $record): string => $record->isMultiItem() ? __('Multiple items') : $record->purchasableDisplayName()),
+                TextColumn::make('guest_email')
+                    ->label(__('Guest email'))
+                    ->placeholder('—')
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('purchasable_type')
                     ->label(__('Purchasable type'))
                     ->formatStateUsing(fn (?string $state): string => $state !== null ? class_basename($state) : '')
@@ -196,6 +213,16 @@ class OrderResource extends Resource
                         'partially_refunded' => __('Partially refunded'),
                     ]),
                 static::morphFilter('buyer', 'buyer_type', 'buyer_id'),
+                TernaryFilter::make('guest')
+                    ->label(__('Guest orders'))
+                    ->nullable()
+                    ->attribute('buyer_id')
+                    ->trueLabel(__('Guest orders only'))
+                    ->falseLabel(__('Buyer orders only'))
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereNull('buyer_id'),
+                        false: fn (Builder $query): Builder => $query->whereNotNull('buyer_id'),
+                    ),
                 static::morphFilter('purchasable', 'purchasable_type', 'purchasable_id'),
                 static::createdAtRangeFilter(),
                 TrashedFilter::make(),
